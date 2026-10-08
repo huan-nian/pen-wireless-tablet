@@ -1,0 +1,67 @@
+# ============================================================
+# 仓库统一忽略规则
+#   PenClient   —— Android 端（Kotlin + Gradle，Android Studio）
+#   PenReceiver —— Windows 端（C# / .NET 8，Visual Studio）
+# 两端各自的 .gitignore（PenClient/.gitignore、app/.gitignore）
+# 仍然生效，这里只补充仓库根目录级别的通用规则。
+# ============================================================
+
+# ---------- 操作系统与编辑器杂项 ----------
+.DS_Store
+Thumbs.db
+desktop.ini
+*.swp
+*.swo
+*~
+*.log
+*.tmp
+*.bak
+
+# ---------- Gradle / Android 构建产物 ----------
+.gradle/
+.kotlin/
+build/
+captures/
+.externalNativeBuild/
+.cxx/
+lint-results*.html
+
+# 本机 SDK / NDK 路径等环境相关配置，绝不提交
+local.properties
+local.defaults.properties
+
+# 签名密钥与打包产物（如确需提交，用 git add -f 强制添加）
+*.jks
+*.keystore
+*.apk
+*.aab
+*.ap_
+*.dex
+release/
+
+# ---------- .NET 构建产物 ----------
+[Bb]in/
+[Oo]bj/
+.vs/
+*.user
+*.suo
+*.userprefs
+*.userosscache
+*.sln.docstates
+TestResults/
+*.nupkg
+*.snupkg
+project.lock.json
+project.fragment.lock.json
+artifacts/
+
+# ---------- 测试与覆盖率 ----------
+coverage/
+*.coverage
+*.coveragexml
+
+# ---------- 本地私有配置 ----------
+*.local
+.env
+.env.*
+!.env.example
