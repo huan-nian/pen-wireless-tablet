@@ -2,4 +2,17 @@
 <resources>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
+
+    <!-- 配置面板底色与画布底色：浅灰面板 + 纯白画布，书写时对比清楚 -->
+    <color name="panel_bg">#FFF3F4F6</color>
+    <color name="card_stroke">#FFDDE1E6</color>
+    <color name="canvas_bg">#FFFFFFFF</color>
+
+    <color name="text_primary">#FF1B1B1F</color>
+    <color name="text_secondary">#FF5F6368</color>
+
+    <!-- 状态指示点 -->
+    <color name="dot_idle">#FF9AA0A6</color>
+    <color name="dot_ok">#FF188038</color>
+    <color name="dot_busy">#FFB26A00</color>
 </resources>

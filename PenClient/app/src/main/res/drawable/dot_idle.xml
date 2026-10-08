@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  状态指示点。形状固定、颜色为白色，实际颜色由代码通过 backgroundTintList 设置，
+  这样一个小文件就能覆盖「未连接 / 已连接 / 传输中」三种状态。
+-->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="oval">
+    <solid android:color="@color/white" />
+    <size
+        android:width="10dp"
+        android:height="10dp" />
+</shape>

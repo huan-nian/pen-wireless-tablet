@@ -17,6 +17,11 @@ desktop.ini
 *.tmp
 *.bak
 
+# IDE 元数据（Android Studio / IntelliJ / VS / VS Code）
+.idea/
+.vscode/
+*.iml
+
 # ---------- Gradle / Android 构建产物 ----------
 .gradle/
 .kotlin/
@@ -65,3 +70,8 @@ coverage/
 .env
 .env.*
 !.env.example
+
+# ---------- 本机排查产生的临时文件 ----------
+# .acl-reports/ 是文件权限诊断脚本留下的报告与回滚脚本，只对本机有意义
+.acl-reports/
+.tmp-*

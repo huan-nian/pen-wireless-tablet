@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
+    <RootNamespace>PenReceiver</RootNamespace>
+    <AssemblyName>PenCore</AssemblyName>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <UseWindowsForms>true</UseWindowsForms>
+    <LangVersion>latest</LangVersion>
+    <AssemblyTitle>无线手写板 核心逻辑</AssemblyTitle>
+    <Version>2.0.0</Version>
+    <!--
+      刻意不声明管理员权限、不生成应用清单：本库同时被接收端（需要提权）和
+      自检程序（不需要提权）引用，权限声明必须留在各自的 exe 项目里。
+    -->
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+
+</Project>

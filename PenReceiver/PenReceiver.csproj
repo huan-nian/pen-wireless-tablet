@@ -1,8 +1,28 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
+
   <PropertyGroup>
-    <OutputType>Exe</OutputType>
+    <OutputType>WinExe</OutputType>
     <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
+    <RootNamespace>PenReceiver</RootNamespace>
+    <AssemblyName>PenReceiver</AssemblyName>
     <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
     <UseWindowsForms>true</UseWindowsForms>
+    <LangVersion>latest</LangVersion>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!--
+      DPI 感知交给 SDK 生成：注入坐标必须是物理像素，而 WinForms 只有在进程
+      声明了 DPI 感知后，Screen.Bounds 才返回物理像素而不是被缩放过的逻辑像素。
+    -->
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <ApplicationDefaultFont>Microsoft YaHei UI, 9pt</ApplicationDefaultFont>
+    <AssemblyTitle>无线手写板 接收端</AssemblyTitle>
+    <Product>PenReceiver</Product>
+    <Version>2.0.0</Version>
   </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\PenCore\PenCore.csproj" />
+  </ItemGroup>
+
 </Project>
