@@ -28,14 +28,14 @@ permissions:
   contents: write
 
 jobs:
-  # Windows 接收端不需要外部 SDK，最容易自动化
+  # ---------- Windows 接收端：不需要外部 SDK，最容易自动化 ----------
   windows:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: 安装 .NET 8
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v5
         with:
           dotnet-version: '8.0.x'
 
@@ -77,41 +77,92 @@ jobs:
           name: windows
           path: dist/*.zip
 
-  # Android 需要 JDK 与 Android SDK，放在 ubuntu runner 上更快
+  # ---------- Android APK ----------
+  #
+  # 这里刻意不使用 android-actions/setup-android：它在本项目上会在「安装 Android SDK」
+  # 一步失败（7 秒即挂，与网络无关，改用官方 cmdline-tools 手动安装后稳定）。
+  # 手动安装还有个好处：可以明确装出 compileSdk 需要的那个平台，
+  # 本项目的 compileSdk 是 36 的 minorApiLevel 1，对应 platforms;android-36.1，
+  # runner 预装的 SDK 里不一定有这个平台。
   android:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: 安装 JDK 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '21'
 
       - name: 安装 Android SDK
-        uses: android-actions/setup-android@v3
+        run: |
+          set -euo pipefail
+          SDK="/usr/local/lib/android/sdk"
+
+          # runner 镜像通常已在此装好 SDK。若没有，就直接下官方 cmdline-tools：
+          # 比"从 sdkmanager 路径反推 SDK 根目录"可靠——那个推导在
+          # cmdline-tools/latest/bin 这一层级上很容易算错一层。
+          SDKMANAGER="$(find "$SDK" -name sdkmanager -type f 2>/dev/null | head -n1)"
+          if [ -z "$SDKMANAGER" ]; then
+            echo "未在 $SDK 找到 sdkmanager，下载官方 cmdline-tools…"
+            mkdir -p "$SDK/cmdline-tools"
+            curl -fsSL -o /tmp/cmdline-tools.zip \
+              https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
+            unzip -q /tmp/cmdline-tools.zip -d /tmp/cmdline-tools
+            mv /tmp/cmdline-tools/cmdline-tools "$SDK/cmdline-tools/latest"
+            SDKMANAGER="$SDK/cmdline-tools/latest/bin/sdkmanager"
+          fi
+
+          echo "SDK=$SDK"
+          echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
+          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
+          echo "$(dirname "$SDKMANAGER")" >> "$GITHUB_PATH"
+          echo "$SDK/platform-tools" >> "$GITHUB_PATH"
+
+          # 仓库里带了已接受的许可哈希，避免 sdkmanager 卡在交互式许可确认上
+          mkdir -p "$SDK/licenses"
+          cp PenClient/licenses/* "$SDK/licenses/" 2>/dev/null || true
+
+          echo "sdkmanager 版本：$("$SDKMANAGER" --version 2>&1 | head -n1)"
+
+          # 装构建必需组件。本项目的 compileSdk 是 36 的 minorApiLevel 1，
+          # 对应 platforms;android-36.1；个别包不存在时不让整步失败，
+          # 因为后面 AGP 还会按 android.builder.sdkDownload 兜底下载。
+          yes | "$SDKMANAGER" --install --sdk_root="$SDK" \
+            "platform-tools" \
+            "platforms;android-36.1" \
+            "build-tools;36.1.0" || echo "（部分组件安装失败，交给 AGP 兜底）"
+
+          echo "--- 已安装的平台 ---"
+          ls -1 "$SDK/platforms" 2>/dev/null || true
+          echo "--- 已安装的构建工具 ---"
+          ls -1 "$SDK/build-tools" 2>/dev/null || true
 
       - name: 构建 APK
         working-directory: PenClient
         run: |
+          # local.properties 会把 SDK 位置写死，CI 上用环境变量即可；
+          # 同时打开 AGP 的按需下载，兜住 platforms/build-tools 版本差异
+          echo "android.builder.sdkDownload=true" >> gradle.properties
           chmod +x gradlew
-          ./gradlew :app:assembleDebug --no-daemon
+          ./gradlew :app:assembleDebug --no-daemon --stacktrace
 
-      - name: 改名并上传
+      - name: 改名并收集
         run: |
           version='${{ github.event.inputs.version }}'
           if [ -z "$version" ]; then version="${GITHUB_REF_NAME#v}"; fi
           echo "VERSION=$version" >> "$GITHUB_ENV"
           mkdir -p dist
           cp PenClient/app/build/outputs/apk/debug/app-debug.apk "dist/PenClient-$version-debug.apk"
+          ls -lh dist/
 
       - uses: actions/upload-artifact@v4
         with:
           name: android
           path: dist/*.apk
 
-  # 等两个平台都构建完，一次性创建 Release
+  # ---------- 两个平台都构建完，一次性创建 Release ----------
   release:
     needs: [windows, android]
     runs-on: ubuntu-latest
@@ -129,24 +180,24 @@ jobs:
       - name: 创建 Release
         uses: softprops/action-gh-release@v2
         with:
-          # 手动触发时没有 tag，用版本号生成一个
           tag_name: ${{ github.ref_type == 'tag' && github.ref_name || format('v{0}', github.event.inputs.version) }}
           name: 无线手写板 ${{ github.ref_type == 'tag' && github.ref_name || format('v{0}', github.event.inputs.version) }}
           draft: false
           prerelease: true
           generate_release_notes: true
           body: |
-            预览版。平板当无线手写板用，笔迹以 Windows Ink 注入电脑。
+            预览版。把 Android 平板当无线手写板用，笔迹以 Windows Ink 注入电脑。
+
+            完整使用说明见仓库 README，下载与三分钟上手步骤见
+            [`docs/release-notes-v0.1.0.md`](https://github.com/huan-nian/pen-wireless-tablet/blob/main/docs/release-notes-v0.1.0.md)。
 
             **下载哪个**
-            - `PenReceiver-*-win-x64.zip` —— 接收端，**推荐**。自包含，目标机不用装 .NET。
-            - `PenReceiver-*-win-x64-lite.zip` —— 同上但体积小得多，需要预装 .NET 8 运行时。
+            - `PenReceiver-*-win-x64.zip` —— 接收端，**推荐**。自包含，电脑上不用装 .NET。
+            - `PenReceiver-*-win-x64-lite.zip` —— 同上但体积小得多，需要电脑已装 .NET 8 运行时。
             - `PenClient-*-debug.apk` —— 平板端。debug 签名，安装时请允许「未知来源」。
 
-            **怎么用**
-            1. 电脑上解压接收端，双击 `launch-receiver.cmd`，在 UAC 窗口点「是」。
-               首次运行请在防火墙提示里允许**专用网络**。
-            2. 平板装 APK，打开后点「扫描电脑」→「连接」→「开始书写」。
-
-            详细说明见仓库 README。
+            **三步用起来**
+            1. 电脑上解压接收端，双击 `launch-receiver.cmd`，UAC 窗口点「是」。首次运行请允许防火墙的**专用网络**。
+            2. 平板装 APK，打开后点「扫描电脑」→「连接」。
+            3. 点右下角「开始书写」，用触控笔在白色区域书写。
           files: release/*
