@@ -15,9 +15,13 @@
 
     <application
         android:allowBackup="true"
+        android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.PenClient">
+
+        <!-- 连接页：填地址、扫描、连接 -->
         <activity
             android:name=".MainActivity"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|density|uiMode"
@@ -29,5 +33,16 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!--
+          书写页：左侧快捷按钮 + 整块书写区。
+          用深色主题，避免浅色系统栏在书写时干扰视线。
+        -->
+        <activity
+            android:name=".PenBoardActivity"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|density|uiMode"
+            android:exported="false"
+            android:screenOrientation="landscape"
+            android:theme="@style/Theme.PenClient.Fullscreen" />
     </application>
 </manifest>

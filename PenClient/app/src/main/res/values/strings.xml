@@ -1,6 +1,7 @@
 <resources>
     <string name="app_name">无线手写板</string>
 
+    <!-- ==================== 连接页 ==================== -->
     <string name="section_receiver">接收端</string>
     <string name="section_receiver_hint">在电脑上运行 PenReceiver，填它显示的地址；不填也可以先扫描。</string>
     <string name="hint_host">电脑 IP 地址</string>
@@ -8,9 +9,10 @@
     <string name="action_scan">扫描电脑</string>
     <string name="action_connect">连接</string>
     <string name="action_disconnect">断开</string>
+    <string name="action_enter_fullscreen">开始书写</string>
+    <string name="action_enter_fullscreen_disabled">请先连接电脑</string>
 
     <string name="section_options">选项</string>
-    <string name="option_show_ink">在平板上显示笔迹预览</string>
     <string name="option_keep_screen_on">书写时保持屏幕常亮</string>
 
     <string name="status_idle">未连接</string>
@@ -22,11 +24,35 @@
     <string name="status_scan_none">没有发现接收端，请确认电脑端已启动且在同一局域网</string>
     <string name="status_scan_found">发现 %1$d 个接收端，已填入 %2$s</string>
 
-    <string name="canvas_idle_hint">用触控笔在此书写</string>
-    <string name="canvas_live_hint">笔尖位置会映射到电脑主屏</string>
+    <!-- ==================== 书写页 ==================== -->
+    <string name="tool_home">桌面</string>
+    <string name="tool_task">多任务</string>
+    <string name="tool_save">保存</string>
+    <string name="tool_undo">撤销</string>
+    <string name="tool_redo">取消撤销</string>
+    <string name="tool_scroll_up">向上滚动</string>
+    <string name="tool_scroll_down">向下滚动</string>
+    <string name="tool_detail">详情</string>
+    <string name="tool_close">退出</string>
+
+    <string name="canvas_live_hint">用触控笔在此书写</string>
     <string name="pen_idle">压感 — · 倾斜 —</string>
     <string name="pen_active">压感 %1$d%% · 倾斜 %2$d°/%3$d°%4$s</string>
     <string name="pen_eraser"> · 橡皮</string>
     <string name="pen_long_press">已识别长按 · 松开弹出右键菜单</string>
     <string name="toast_long_press">长按已识别，松开后电脑上弹出右键菜单</string>
+
+    <string name="action_background">背景</string>
+    <string name="dialog_background_title">书写区背景颜色</string>
+
+    <string name="ink_mode_never">笔迹永存</string>
+    <string name="ink_mode_5s">笔迹 5 秒</string>
+    <string name="ink_mode_10s">笔迹 10 秒</string>
+    <string name="ink_mode_1m">笔迹 1 分钟</string>
+    <string name="dialog_ink_mode_title">笔迹消退时间</string>
+    <string name="ink_mode_hint">停笔后按所选时间自动清空平板上的笔迹；电脑上的笔迹不受影响。</string>
+
+    <string name="toast_sent">已发送：%1$s</string>
+    <string name="toast_command_failed">发送失败：尚未连接电脑</string>
+    <string name="toast_exit">已退出无线手写板</string>
 </resources>

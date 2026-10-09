@@ -13,6 +13,7 @@ public sealed class ReceiverStats
     public long DroppedPackets;
     public long SequenceGaps;
     public long HelloProbes;
+    public long Commands;
     public long RejectedSenders;
     public double PacketsPerSecond;
     public DateTime? LastPacketAt;
@@ -43,6 +44,7 @@ public sealed class UdpPenReceiver : IDisposable
     private long _dropped;
     private long _gaps;
     private long _hellos;
+    private long _commands;
     private long _rejected;
     private long _windowCount;
     private DateTime _windowStart = DateTime.UtcNow;
@@ -55,6 +57,9 @@ public sealed class UdpPenReceiver : IDisposable
 
     /// <summary>收到探测报文时触发，用于告诉 Android 端本机在监听。</summary>
     public event Action<IPEndPoint, int>? ProbeReceived;
+
+    /// <summary>收到平板快捷按钮命令时触发。回调发生在后台接收线程。</summary>
+    public event Action<SystemCommand>? CommandReceived;
 
     /// <summary>只接受这个来源 IP 的报文。为 null 表示不过滤（局域网内任何设备都能注入，慎用）。</summary>
     public string? AllowedSender { get; set; }
@@ -136,6 +141,7 @@ public sealed class UdpPenReceiver : IDisposable
                 DroppedPackets = _dropped,
                 SequenceGaps = _gaps,
                 HelloProbes = _hellos,
+                Commands = _commands,
                 RejectedSenders = _rejected,
                 PacketsPerSecond = _rate,
                 LastPacketAt = _lastPacketAt,
@@ -194,17 +200,31 @@ public sealed class UdpPenReceiver : IDisposable
             return;
         }
 
-        if (!PenProtocol.TryParsePen(data, out var packet))
-        {
-            lock (_sync) _invalid++;
-            return;
-        }
-
+        // 来源限制对命令报文同样生效：命令会让电脑执行快捷键，不能任由局域网内
+        // 任何设备摆布。
         var allowed = AllowedSender;
         if (!string.IsNullOrWhiteSpace(allowed) &&
             !string.Equals(remote.Address.ToString(), allowed.Trim(), StringComparison.OrdinalIgnoreCase))
         {
             lock (_sync) _rejected++;
+            return;
+        }
+
+        if (PenProtocol.TryParseCommand(data, out var command))
+        {
+            lock (_sync)
+            {
+                _commands++;
+                _lastPacketAt = DateTime.UtcNow;
+                _lastSender = remote.Address.ToString();
+            }
+            CommandReceived?.Invoke(command);
+            return;
+        }
+
+        if (!PenProtocol.TryParsePen(data, out var packet))
+        {
+            lock (_sync) _invalid++;
             return;
         }
 

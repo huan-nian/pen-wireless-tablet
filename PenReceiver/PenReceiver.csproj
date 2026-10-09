@@ -19,6 +19,12 @@
     <AssemblyTitle>无线手写板 接收端</AssemblyTitle>
     <Product>PenReceiver</Product>
     <Version>2.0.0</Version>
+
+    <!--
+      应用图标：多尺寸 .ico 由 tools/generate-app-icons.py 从
+      assets/app-icon-source.png 生成。改图标时重新跑那个脚本即可。
+    -->
+    <ApplicationIcon>..\assets\app.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>

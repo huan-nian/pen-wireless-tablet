@@ -1,7 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  主界面：上方是配置卡片，下方是整块手写画布。
-  「收起配置」后卡片隐藏，画布铺满整个屏幕，平板就变成一块纯粹的无线手写板。
+  连接页：只负责填地址、扫描、连接。
+
+  这里刻意**不再放半屏书写区**：配置面板展开时画布只剩一小条，写起来很难受，
+  也容易误触。书写统一在书写页（activity_fullscreen.xml）里进行，
+  连上之后按底部「开始书写」进入。
 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
@@ -23,10 +26,9 @@
         app:titleTextColor="@color/text_primary" />
 
     <ScrollView
-        android:id="@+id/configScroll"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:fillViewport="false"
+        android:layout_height="0dp"
+        android:layout_weight="1"
         android:paddingStart="16dp"
         android:paddingEnd="16dp">
 
@@ -36,6 +38,7 @@
             android:orientation="vertical"
             android:paddingBottom="12dp">
 
+            <!-- ==================== 接收端 ==================== -->
             <com.google.android.material.card.MaterialCardView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -140,11 +143,12 @@
                         android:textAppearance="?attr/textAppearanceBodySmall"
                         android:textColor="@color/text_secondary"
                         android:visibility="gone"
-                        tools:text="已发现：192.168.1.107 · 点击填入"
+                        tools:text="192.168.1.107 : 8888"
                         tools:visibility="visible" />
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
+            <!-- ==================== 选项 ==================== -->
             <com.google.android.material.card.MaterialCardView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -171,17 +175,10 @@
                         android:textColor="@color/text_primary" />
 
                     <com.google.android.material.materialswitch.MaterialSwitch
-                        android:id="@+id/showInkSwitch"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="6dp"
-                        android:checked="true"
-                        android:text="@string/option_show_ink" />
-
-                    <com.google.android.material.materialswitch.MaterialSwitch
                         android:id="@+id/keepScreenOnSwitch"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
+                        android:layout_marginTop="6dp"
                         android:checked="true"
                         android:text="@string/option_keep_screen_on" />
                 </LinearLayout>
@@ -189,33 +186,8 @@
         </LinearLayout>
     </ScrollView>
 
-    <FrameLayout
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_marginStart="8dp"
-        android:layout_marginTop="8dp"
-        android:layout_marginEnd="8dp"
-        android:layout_weight="1">
-
-        <com.example.penclient.PenCanvasView
-            android:id="@+id/canvas"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:background="@color/canvas_bg" />
-
-        <TextView
-            android:id="@+id/canvasOverlay"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_gravity="top|start"
-            android:layout_margin="14dp"
-            android:textAppearance="?attr/textAppearanceBodyMedium"
-            android:textColor="@color/text_secondary"
-            tools:text="用触控笔在此书写" />
-    </FrameLayout>
-
+    <!-- ==================== 状态 + 进入书写 ==================== -->
     <LinearLayout
-        android:id="@+id/statusBar"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:background="@color/panel_bg"
@@ -237,23 +209,19 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_marginStart="8dp"
-            android:layout_weight="3"
+            android:layout_weight="1"
             android:ellipsize="end"
-            android:maxLines="1"
+            android:maxLines="2"
             android:textAppearance="?attr/textAppearanceBodySmall"
             android:textColor="@color/text_primary"
             tools:text="未连接" />
 
-        <TextView
-            android:id="@+id/penText"
-            android:layout_width="0dp"
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/writeButton"
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_weight="2"
-            android:gravity="end"
-            android:ellipsize="end"
-            android:maxLines="1"
-            android:textAppearance="?attr/textAppearanceBodySmall"
-            android:textColor="@color/text_secondary"
-            tools:text="压感 — · 倾斜 —" />
+            android:layout_marginStart="8dp"
+            android:enabled="false"
+            android:text="@string/action_enter_fullscreen" />
     </LinearLayout>
 </LinearLayout>

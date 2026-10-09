@@ -33,6 +33,8 @@ internal static class SelfTest
         TestPressureScaling();
         TestLongPressGate();
         TestProtocolRoundTripRightClick();
+        TestCommandProtocol();
+        TestCommandKeyMapping();
         TestUdpPipeline(port);
         TestHelloProbe(port);
 
@@ -209,8 +211,7 @@ internal static class SelfTest
         Check("Reset 后恢复正常", gate.Decide(down) == StrokeDecision.Inject);
     }
 
-    private static void TestProtocolRoundTripRightClick()
-    {
+    private static void TestProtocolRoundTripRightClick()    {
         var bytes = PenProtocol.BuildPen(
             seq: 7, action: PenAction.Up, x: 0.5f, y: 0.5f,
             pressure: 0f, tiltX: 0f, tiltY: 0f, eraser: false, rightClick: true);
@@ -228,6 +229,75 @@ internal static class SelfTest
             pressure: 0f, tiltX: 0f, tiltY: 0f, eraser: true, rightClick: true);
         Check("橡皮与右键标记可以共存",
             PenProtocol.TryParsePen(eraser, out var p3) && p3.IsEraser && p3.IsRightClick);
+    }
+
+    /// <summary>系统命令报文的编解码。</summary>
+    private static void TestCommandProtocol()
+    {
+        foreach (var command in new[]
+        {
+            SystemCommand.ShowDesktop, SystemCommand.TaskView, SystemCommand.Save,
+            SystemCommand.Undo, SystemCommand.Redo, SystemCommand.ScrollUp, SystemCommand.ScrollDown,
+        })
+        {
+            var bytes = PenProtocol.BuildCommand(command);
+            Check($"{command} 报文长度固定 {PenProtocol.CommandPacketSize} 字节",
+                bytes.Length == PenProtocol.CommandPacketSize, $"实际 {bytes.Length}");
+            Check($"{command} 能往返解析",
+                PenProtocol.TryParseCommand(bytes, out var parsed) && parsed == command);
+        }
+
+        // 编号越界的报文必须被拒绝，否则会执行到未定义的操作
+        var bogus = new byte[PenProtocol.CommandPacketSize];
+        BitConverter.GetBytes(PenProtocol.MagicCommand).CopyTo(bogus, 0);
+        BitConverter.GetBytes(999).CopyTo(bogus, 4);
+        Check("越界命令编号被拒绝", !PenProtocol.TryParseCommand(bogus, out _));
+
+        // 命令报文不能被笔事件解析器误认
+        var commandBytes = PenProtocol.BuildCommand(SystemCommand.Undo);
+        Check("命令报文不会被当成笔事件", !PenProtocol.TryParsePen(commandBytes, out _));
+    }
+
+    /// <summary>
+    /// 命令 → 快捷键的映射。
+    ///
+    /// 这是最容易写错、也最难在运行中发现的一层：按错一个键可能悄悄触发别的操作。
+    /// MapCommand 是纯函数，所以可以在没有注入权限的环境里直接断言。
+    /// </summary>
+    private static void TestCommandKeyMapping()
+    {
+        void Expect(string name, SystemCommand command, VirtualKey modifier, VirtualKey key)
+        {
+            var chord = SystemCommandInjector.MapCommand(command);
+            Check(name,
+                chord is { } c && c.Modifier == modifier && c.Key == key,
+                $"实际 {chord?.ToString() ?? "null"}");
+        }
+
+        Expect("桌面 = Win + D", SystemCommand.ShowDesktop, VirtualKey.LeftWindows, VirtualKey.D);
+        Expect("多任务 = Win + Tab", SystemCommand.TaskView, VirtualKey.LeftWindows, VirtualKey.Tab);
+        Expect("保存 = Ctrl + S", SystemCommand.Save, VirtualKey.Control, VirtualKey.S);
+        Expect("撤销 = Ctrl + Z", SystemCommand.Undo, VirtualKey.Control, VirtualKey.Z);
+        Expect("取消撤销 = Ctrl + Y", SystemCommand.Redo, VirtualKey.Control, VirtualKey.Y);
+
+        // 滚轮不是按键命令，必须返回 null，否则 Execute 会走进按键分支注入无意义的键
+        Check("上滚不是按键命令", SystemCommandInjector.MapCommand(SystemCommand.ScrollUp) is null);
+        Check("下滚不是按键命令", SystemCommandInjector.MapCommand(SystemCommand.ScrollDown) is null);
+        Check("None 不是按键命令", SystemCommandInjector.MapCommand(SystemCommand.None) is null);
+
+        // 映射表必须覆盖协议里所有「按键类」命令，漏一个就会在运行时才报未知命令
+        var keyCommands = new[]
+        {
+            SystemCommand.ShowDesktop, SystemCommand.TaskView, SystemCommand.Save,
+            SystemCommand.Undo, SystemCommand.Redo,
+        };
+        foreach (var command in keyCommands)
+        {
+            Check($"{command} 有快捷键映射", SystemCommandInjector.MapCommand(command) is not null);
+        }
+
+        Check("滚轮一格 = 120", SystemCommandInjector.WheelNotch == 120,
+            $"实际 {SystemCommandInjector.WheelNotch}");
     }
 
     private static void TestUdpPipeline(int port)
@@ -272,6 +342,18 @@ internal static class SelfTest
         Thread.Sleep(200);
         var restricted = session.SnapshotForTest();
         Check("来源限制生效", restricted.RejectedSenders >= 1, $"实际 {restricted.RejectedSenders}");
+
+        // 系统命令报文：走同一条 UDP 通道，但统计在单独的计数器上，
+        // 不能混进笔事件计数（否则界面的「数据速率」会被按钮点击污染）
+        session.AllowedSender = null;
+        var commandBytes = PenProtocol.BuildCommand(SystemCommand.Undo);
+        sender.Send(commandBytes, commandBytes.Length, target);
+        Thread.Sleep(200);
+
+        var withCommand = session.SnapshotForTest();
+        Check("命令报文被单独计数", withCommand.Commands >= 1, $"实际 {withCommand.Commands}");
+        Check("命令报文不混入笔事件计数", withCommand.Packets == expectedPackets,
+            $"期望 {expectedPackets}，实际 {withCommand.Packets}");
 
         session.Stop();
     }

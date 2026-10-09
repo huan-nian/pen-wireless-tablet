@@ -93,9 +93,24 @@ public sealed class PenInjector : IDisposable
 
     public PenInjector(DisplayTarget display, MappingMode mode)
     {
-        _injector = InputInjector.TryCreate()
-            ?? throw new InvalidOperationException(
+        // 注意：没有管理员权限时 TryCreate 不是返回 null，而是抛 COM 异常
+        // （0x80040111 ClassFactory 无法供应请求的类）。两种都要处理，
+        // 并统一抛成带中文说明的异常，免得用户看到一串 HRESULT 无从下手。
+        try
+        {
+            _injector = InputInjector.TryCreate();
+        }
+        catch (Exception ex)
+        {
+            throw new InvalidOperationException(
+                $"无法创建输入注入器（InputInjector）：{ex.Message}\n请以管理员身份运行本程序。", ex);
+        }
+
+        if (_injector is null)
+        {
+            throw new InvalidOperationException(
                 "无法创建输入注入器（InputInjector）。请以管理员身份运行本程序。");
+        }
 
         // 显式声明笔注入通道。即使省略，第一次 InjectPenInput 也会隐式初始化，
         // 但显式调用能让首次注入不用承担初始化开销（少了第一笔的顿感）。

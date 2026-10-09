@@ -1,3 +1,13 @@
 <resources>
+    <!-- 连接页与书写页共用的留白尺寸 -->
     <dimen name="fab_margin">16dp</dimen>
+
+    <!-- 左侧快捷按钮列的宽度 -->
+    <dimen name="toolbar_width">64dp</dimen>
+    <!-- 单个快捷按钮的尺寸 -->
+    <dimen name="tool_button_size">48dp</dimen>
+    <!-- 快捷按钮的图标尺寸（inside 按钮） -->
+    <dimen name="tool_icon_size">26dp</dimen>
+    <!-- 按钮之间的分隔线高度 -->
+    <dimen name="tool_divider_height">12dp</dimen>
 </resources>

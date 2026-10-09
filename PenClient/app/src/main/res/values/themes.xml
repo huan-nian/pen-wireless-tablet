@@ -2,7 +2,7 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
     <!--
       基础主题：Material 3，无 ActionBar。
-      手写板界面不需要系统栏抢注意力，所以状态栏/导航栏都用浅色并跟随面板底色。
+      连接页是浅色的，所以状态栏/导航栏跟随面板底色并使用深色图标。
     -->
     <style name="Base.Theme.PenClient" parent="Theme.Material3.DayNight.NoActionBar">
         <item name="android:statusBarColor">@color/panel_bg</item>
@@ -12,4 +12,37 @@
     </style>
 
     <style name="Theme.PenClient" parent="Base.Theme.PenClient" />
+
+    <!--
+      书写页主题：整页深色，书写时不该有浅色系统栏干扰。
+      状态栏也用深色底 + 浅色图标。
+    -->
+    <style name="Theme.PenClient.Fullscreen" parent="Base.Theme.PenClient">
+        <item name="android:statusBarColor">@color/fullscreen_bg</item>
+        <item name="android:navigationBarColor">@color/fullscreen_bg</item>
+        <item name="android:windowLightStatusBar" tools:targetApi="m">false</item>
+        <item name="android:windowLightNavigationBar" tools:targetApi="o_mr1">false</item>
+    </style>
+
+    <!--
+      左侧工具栏按钮。用 ImageButton + tint 统一着色，避免每个图标各写一份颜色；
+      按下时用圆角高亮给出反馈。
+    -->
+    <style name="ToolButton">
+        <item name="android:layout_width">@dimen/tool_button_size</item>
+        <item name="android:layout_height">@dimen/tool_button_size</item>
+        <item name="android:layout_marginTop">2dp</item>
+        <item name="android:background">@drawable/tool_button_bg</item>
+        <item name="android:padding">11dp</item>
+        <item name="android:scaleType">fitCenter</item>
+        <!-- 用 app:tint（AppCompatImageButton）而不是已废弃的 android:tint -->
+        <item name="tint">@color/toolbar_icon</item>
+    </style>
+
+    <!-- 按钮分组之间的间隔线：留白而不是画线，视觉更干净 -->
+    <style name="ToolDivider">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">@dimen/tool_divider_height</item>
+        <item name="android:background">@android:color/transparent</item>
+    </style>
 </resources>

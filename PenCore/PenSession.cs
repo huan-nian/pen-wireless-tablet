@@ -24,6 +24,9 @@ public sealed class PenSession : IDisposable
     private readonly Timer _uiTicker;
     private readonly UdpClient _probeReplier = new();
 
+    /// <summary>把平板快捷按钮翻译成键盘/鼠标操作。</summary>
+    private readonly SystemCommandInjector _commands = new();
+
     private DateTime _lastPacketAtUtc = DateTime.UtcNow;
     private long _forcedUps;
     private long _lastUiPackets;
@@ -42,10 +45,14 @@ public sealed class PenSession : IDisposable
         _receiver = new UdpPenReceiver();
         _receiver.PenReceived += OnPenReceived;
         _receiver.ProbeReceived += OnProbeReceived;
+        _receiver.CommandReceived += OnCommandReceived;
 
         _watchdog = new Timer(_ => WatchdogTick(), null, 100, 100);
         _uiTicker = new Timer(_ => UiTick(), null, 500, 250);
     }
+
+    /// <summary>最近执行过的一条快捷命令，供界面显示。</summary>
+    public string? LastCommand { get; private set; }
 
     /// <summary>是否把收到的笔事件真正注入到系统。关掉后仍然统计，便于排查。 </summary>
     public bool InjectionEnabled
@@ -145,6 +152,41 @@ public sealed class PenSession : IDisposable
             // 探测回复失败不影响正常书写
         }
     }
+
+    /// <summary>
+    /// 处理平板快捷按钮。这些命令会抢走键盘焦点（比如 Ctrl+S、Win+D），
+    /// 所以执行前先把按下的笔解开，避免笔尖卡在按下状态。
+    /// </summary>
+    private void OnCommandReceived(SystemCommand command)
+    {
+        lock (_sync)
+        {
+            if (!_enabled) return;
+        }
+
+        _injector.ForcePenUp();
+
+        if (_commands.Execute(command))
+        {
+            LastCommand = $"{DateTime.Now:HH:mm:ss}  {DescribeCommand(command)}";
+        }
+        else
+        {
+            LastCommand = $"{DateTime.Now:HH:mm:ss}  {DescribeCommand(command)} 失败：{_commands.LastError}";
+        }
+    }
+
+    private static string DescribeCommand(SystemCommand command) => command switch
+    {
+        SystemCommand.ShowDesktop => "桌面",
+        SystemCommand.TaskView => "多任务",
+        SystemCommand.Save => "保存",
+        SystemCommand.Undo => "撤销",
+        SystemCommand.Redo => "取消撤销",
+        SystemCommand.ScrollUp => "向上滚动",
+        SystemCommand.ScrollDown => "向下滚动",
+        _ => command.ToString(),
+    };
 
     private void WatchdogTick()
     {

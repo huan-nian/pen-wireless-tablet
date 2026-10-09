@@ -1,0 +1,187 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  书写页：左侧一列快捷按钮，右侧是整块白色书写区。
+
+  按钮顺序（从上到下）与 Windows 端快捷键的对应关系：
+    home     → Win + D        最小化所有窗口回到桌面
+    task     → Win + Tab      打开任务视图（窗口与虚拟桌面）
+    save     → Ctrl + S       快捷保存
+    undo     → Ctrl + Z       撤销
+    redo     → Ctrl + Y       取消撤销
+    scrollUp → 鼠标滚轮上滚
+    scrollDn → 鼠标滚轮下滚
+    detail   → 回到连接页（本地操作，不发给电脑）
+    close    → 退出软件（本地操作）
+
+  底部是背景色与笔迹消退模式的开关，也在本地生效。
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/fullscreen_bg"
+    android:orientation="horizontal">
+
+    <!-- ================= 左侧快捷按钮列 ================= -->
+    <ScrollView
+        android:layout_width="@dimen/toolbar_width"
+        android:layout_height="match_parent"
+        android:background="@color/toolbar_bg"
+        android:fillViewport="true"
+        android:scrollbars="none">
+
+        <LinearLayout
+            android:id="@+id/toolColumn"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_horizontal"
+            android:orientation="vertical"
+            android:paddingTop="8dp"
+            android:paddingBottom="8dp">
+
+            <ImageButton
+                android:id="@+id/btnHome"
+                style="@style/ToolButton"
+                android:contentDescription="@string/tool_home"
+                android:src="@drawable/ic_tool_home" />
+
+            <ImageButton
+                android:id="@+id/btnTask"
+                style="@style/ToolButton"
+                android:contentDescription="@string/tool_task"
+                android:src="@drawable/ic_tool_task" />
+
+            <ImageButton
+                android:id="@+id/btnSave"
+                style="@style/ToolButton"
+                android:contentDescription="@string/tool_save"
+                android:src="@drawable/ic_tool_save" />
+
+            <View style="@style/ToolDivider" />
+
+            <ImageButton
+                android:id="@+id/btnUndo"
+                style="@style/ToolButton"
+                android:contentDescription="@string/tool_undo"
+                android:src="@drawable/ic_tool_undo" />
+
+            <ImageButton
+                android:id="@+id/btnRedo"
+                style="@style/ToolButton"
+                android:contentDescription="@string/tool_redo"
+                android:src="@drawable/ic_tool_redo" />
+
+            <View style="@style/ToolDivider" />
+
+            <ImageButton
+                android:id="@+id/btnScrollUp"
+                style="@style/ToolButton"
+                android:contentDescription="@string/tool_scroll_up"
+                android:src="@drawable/ic_tool_scroll_up" />
+
+            <ImageButton
+                android:id="@+id/btnScrollDown"
+                style="@style/ToolButton"
+                android:contentDescription="@string/tool_scroll_down"
+                android:src="@drawable/ic_tool_scroll_down" />
+
+            <View style="@style/ToolDivider" />
+
+            <ImageButton
+                android:id="@+id/btnDetail"
+                style="@style/ToolButton"
+                android:contentDescription="@string/tool_detail"
+                android:src="@drawable/ic_tool_info" />
+
+            <ImageButton
+                android:id="@+id/btnClose"
+                style="@style/ToolButton"
+                android:contentDescription="@string/tool_close"
+                android:src="@drawable/ic_tool_close" />
+        </LinearLayout>
+    </ScrollView>
+
+    <!-- ================= 书写区 ================= -->
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="match_parent"
+        android:layout_weight="1"
+        android:orientation="vertical">
+
+        <FrameLayout
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_margin="8dp"
+            android:layout_weight="1">
+
+            <com.example.penclient.PenCanvasView
+                android:id="@+id/canvas"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent" />
+
+            <TextView
+                android:id="@+id/canvasOverlay"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="top|start"
+                android:layout_margin="16dp"
+                android:text="@string/canvas_live_hint"
+                android:textAppearance="?attr/textAppearanceBodyMedium"
+                android:textColor="@color/overlay_text" />
+        </FrameLayout>
+
+        <!-- 底部：连接状态 / 背景色 / 笔迹消退模式 -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingStart="16dp"
+            android:paddingTop="2dp"
+            android:paddingEnd="16dp"
+            android:paddingBottom="10dp">
+
+            <View
+                android:id="@+id/statusDot"
+                android:layout_width="10dp"
+                android:layout_height="10dp"
+                android:background="@drawable/dot_idle" />
+
+            <TextView
+                android:id="@+id/statusText"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:layout_weight="1"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:textAppearance="?attr/textAppearanceBodySmall"
+                android:textColor="@color/toolbar_icon"
+                tools:text="已连接 192.168.1.107:8888" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnBackground"
+                style="@style/Widget.Material3.Button.TextButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:minWidth="0dp"
+                android:text="@string/action_background"
+                android:textColor="@color/toolbar_icon"
+                app:icon="@drawable/ic_palette"
+                app:iconTint="@color/toolbar_icon" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnInkMode"
+                style="@style/Widget.Material3.Button.TextButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="4dp"
+                android:minWidth="0dp"
+                android:text="@string/ink_mode_never"
+                android:textColor="@color/toolbar_icon"
+                app:icon="@drawable/ic_timer"
+                app:iconTint="@color/toolbar_icon" />
+        </LinearLayout>
+    </LinearLayout>
+</LinearLayout>

@@ -41,11 +41,46 @@ object PenProtocol {
     /** PNB1：接收端对探测报文的回复 */
     const val MAGIC_REPLY: Int = 0x504E4231
 
+    /** PNB3：平板快捷按钮下发的系统命令 */
+    const val MAGIC_COMMAND: Int = 0x504E4233
+
     const val DEFAULT_PORT: Int = 8888
 
     const val PEN_PACKET_SIZE: Int = 36
     const val HELLO_PACKET_SIZE: Int = 8
     const val REPLY_PACKET_SIZE: Int = 12
+    const val COMMAND_PACKET_SIZE: Int = 8
+
+    /**
+     * 平板左侧快捷按钮对应的电脑端操作。
+     *
+     * 编号必须与 Windows 端 SystemCommand 严格一致，一旦发布就不能改，
+     * 否则新旧版本的两端会错位执行别的操作。
+     *
+     * 注意只有这 7 个需要发给电脑；「详情」与「退出」是本地操作，不走协议。
+     */
+    object Command {
+        /** 最小化所有窗口回到桌面（Win + D） */
+        const val SHOW_DESKTOP = 1
+
+        /** 打开任务视图：各窗口与虚拟桌面（Win + Tab） */
+        const val TASK_VIEW = 2
+
+        /** 快捷保存（Ctrl + S） */
+        const val SAVE = 3
+
+        /** 撤销（Ctrl + Z） */
+        const val UNDO = 4
+
+        /** 取消撤销（Ctrl + Y） */
+        const val REDO = 5
+
+        /** 鼠标滚轮向上 */
+        const val SCROLL_UP = 6
+
+        /** 鼠标滚轮向下 */
+        const val SCROLL_DOWN = 7
+    }
 
     /** 笔动作。悬停（Hover）用于让 Windows 在落笔前就显示出笔尖位置。 */
     object Action {
@@ -116,6 +151,14 @@ object PenProtocol {
         val buf = ByteBuffer.allocate(HELLO_PACKET_SIZE).order(ByteOrder.LITTLE_ENDIAN)
         buf.putInt(MAGIC_HELLO)
         buf.putInt(reserved)
+        return buf.array()
+    }
+
+    /** 打包一个系统命令报文（平板快捷按钮）。 */
+    fun encodeCommand(command: Int): ByteArray {
+        val buf = ByteBuffer.allocate(COMMAND_PACKET_SIZE).order(ByteOrder.LITTLE_ENDIAN)
+        buf.putInt(MAGIC_COMMAND)
+        buf.putInt(command)
         return buf.array()
     }
 

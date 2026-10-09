@@ -69,6 +69,22 @@ class PenCanvasView @JvmOverloads constructor(
             invalidate()
         }
 
+    /**
+     * 书写区背景色。默认纯白（大多数书写/绘画场景的习惯底色），
+     * 可在界面上换成护眼底色等。
+     *
+     * 不能叫 backgroundColor：View 已经有 setBackgroundColor(int)，
+     * Kotlin 属性生成的 setter 会与它 JVM 签名冲突，编译直接报 Accidental override。
+     */
+    var inkBackgroundColor: Int = Color.WHITE
+        set(value) {
+            if (field == value) return
+            field = value
+            // 背景色变了要把已有笔迹一起重绘到底色上，否则旧笔迹会浮在新底色之上
+            repaintInkBackground()
+            invalidate()
+        }
+
     private var inkBitmap: Bitmap? = null
     private var inkCanvas: Canvas? = null
 
@@ -141,7 +157,7 @@ class PenCanvasView @JvmOverloads constructor(
         if (w <= 0 || h <= 0) return
         inkBitmap?.recycle()
         inkBitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
-        inkCanvas = Canvas(inkBitmap!!).apply { drawColor(Color.WHITE) }
+        inkCanvas = Canvas(inkBitmap!!).apply { drawColor(inkBackgroundColor) }
     }
 
     override fun onDraw(canvas: Canvas) {
@@ -419,7 +435,37 @@ class PenCanvasView @JvmOverloads constructor(
 
     /** 清空本地预览笔迹。 */
     fun clearInk() {
-        inkCanvas?.drawColor(Color.WHITE)
+        inkCanvas?.drawColor(inkBackgroundColor)
+        path.reset()
+        invalidate()
+    }
+
+    /**
+     * 换底色时保留已有笔迹。
+     *
+     * 不能直接 drawColor 重铺——那样会把笔迹一起擦掉。做法是先把笔迹层复制一份，
+     * 用新底色重铺原层，再把复制回来的笔迹画上去。中间不能按颜色匹配逐个替换像素：
+     * 笔迹有抗锯齿边缘，颜色替换会留下毛边。
+     */
+    private fun repaintInkBackground() {
+        val bitmap = inkBitmap ?: return
+        val canvas = inkCanvas ?: return
+        if (bitmap.width <= 0 || bitmap.height <= 0) return
+
+        val preserved = try {
+            bitmap.copy(Bitmap.Config.ARGB_8888, false)
+        } catch (e: OutOfMemoryError) {
+            // 内存紧张时退回「清空」而不是崩溃
+            null
+        }
+
+        canvas.drawColor(inkBackgroundColor)
+
+        if (preserved != null) {
+            canvas.drawBitmap(preserved, 0f, 0f, null)
+            preserved.recycle()
+        }
+
         path.reset()
         invalidate()
     }

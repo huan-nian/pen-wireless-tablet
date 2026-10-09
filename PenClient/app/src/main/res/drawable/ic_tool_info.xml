@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  由 tools/generate-tool-icons.py 生成的工具栏图标。
+  统一 24x24 视口，线宽 1.8，圆头圆角；颜色为白色，实际着色由 ImageButton 的
+  tint 控制（见 styles.xml 的 ToolButton）。
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:pathData="M12,3.2 A8.8,8.8 0 1,1 11.99,3.2 Z"
+        android:strokeColor="#FFFFFF" android:strokeWidth="1.8" android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:fillColor="#00000000" />
+    <path
+        android:pathData="M11.2,10.6 L12.9,10.6 L12.9,17.4 L11.2,17.4 Z"
+        android:fillColor="#FFFFFF" />
+    <path
+        android:pathData="M11.2,6.8 L12.9,6.8 L12.9,8.7 L11.2,8.7 Z"
+        android:fillColor="#FFFFFF" />
+
+</vector>

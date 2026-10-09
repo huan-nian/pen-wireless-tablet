@@ -1,6 +1,7 @@
 @echo off
 chcp 65001 >nul
-cd /d "%~dp0"
+rem 本脚本位于 scripts\ 下，先回到仓库根目录再操作
+cd /d "%~dp0.."
 
 rem ============================================================
 rem  无线手写板 接收端启动器
@@ -11,6 +12,8 @@ rem  （现象就是双击后窗口一闪而过、什么都不显示）。
 rem
 rem  为什么要提权：Windows 的笔输入注入接口（InputInjector）
 rem  只在提权后的进程里可用。已提权时会跳过，不会重复弹 UAC。
+rem
+rem  启动后会自动开始监听（可在 %APPDATA%\PenReceiver\settings.ini 里关掉）。
 rem ============================================================
 
 rem --- 未提权则走提权分支；提权与启动的详细日志写在 %TEMP% 下 ---
@@ -33,7 +36,7 @@ exit /b 0
 :elevate
 echo 正在请求管理员权限，请在 UAC 窗口点「是」...
 echo 日志文件：%TEMP%\pen-receiver-launch.log
-powershell -NoProfile -ExecutionPolicy Bypass -File "tools\elevate.ps1" -Root "%~dp0."
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0elevate.ps1" -Root "%CD%"
 if errorlevel 1 (
   echo.
   echo 提权或启动失败。详情见日志：%TEMP%\pen-receiver-launch.log

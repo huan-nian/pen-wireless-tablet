@@ -1,20 +1,35 @@
 using System;
 using System.Drawing;
-using System.Runtime.InteropServices;
 using System.Windows.Forms;
 
 namespace PenReceiver;
 
 /// <summary>
 /// 主窗口：左边是设置与实时状态，右边是事件日志。
+///
+/// 布局上的两个要点（都来自上一版的实际问题）：
+///   1. 设置列不能太窄。上一版固定 430px，中文标签换行后把「开始监听」「暂停注入」
+///      两个按钮挤到只显示一半；现在加宽到 470px，并给按钮预留固定列宽。
+///   2. 按钮不设 AutoSize，按所在列拉伸，避免中文字号变化时又被挤扁。
+///
 /// 关掉窗口不退出程序，只是缩到托盘；真正退出用「停止并退出」或托盘菜单。
 /// </summary>
 public sealed class PenReceiverForm : Form
 {
     private const int LogCapacity = 500;
 
+    /// <summary>
+    /// 设置列宽度。够放下「目标显示器」这类 5 字标签加一个下拉框，
+    /// 同时给右侧日志留出足够宽度（日志被裁会看不清诊断信息）。
+    /// </summary>
+    private const int SettingsColumnWidth = 440;
+
+    /// <summary>标签列宽度，按最长标签「目标显示器」定。</summary>
+    private const int LabelColumnWidth = 88;
+
     private readonly PenInjector _injector;
     private readonly PenSession _session;
+    private readonly ReceiverSettings _settings = ReceiverSettings.Load();
 
     private readonly NumericUpDown _portBox = new();
     private readonly Button _startButton = new();
@@ -42,6 +57,14 @@ public sealed class PenReceiverForm : Form
     private bool _injectionEnabled = true;
     private int _logCount;
 
+    // 配色：浅灰底 + 白卡片，弱化边框，接近 Windows 11 的观感
+    private static readonly Color PageBack = Color.FromArgb(243, 244, 246);
+    private static readonly Color TextPrimary = Color.FromArgb(27, 27, 31);
+    private static readonly Color TextMuted = Color.FromArgb(95, 99, 104);
+    private static readonly Color OkGreen = Color.FromArgb(24, 128, 56);
+    private static readonly Color WarnOrange = Color.FromArgb(178, 106, 0);
+    private static readonly Color ErrorRed = Color.FromArgb(197, 34, 31);
+
     public PenReceiverForm(PenInjector injector, int restoreMessage)
     {
         _injector = injector;
@@ -50,22 +73,126 @@ public sealed class PenReceiverForm : Form
         _session.StatusChanged += OnStatusChanged;
 
         Text = "无线手写板 · 接收端";
-        MinimumSize = new Size(720, 460);
-        Size = new Size(860, 540);
+        MinimumSize = new Size(900, 560);
+        Size = new Size(1000, 660);
         StartPosition = FormStartPosition.CenterScreen;
-        Font = new Font("Microsoft YaHei UI", 9f);
-        BackColor = Color.FromArgb(243, 244, 246);
+        Font = new Font("Microsoft YaHei UI", 9.5f);
+        BackColor = PageBack;
+        ForeColor = TextPrimary;
+        // 刻意不用 AutoScaleMode.Dpi：它会把 Size 也按 96/当前DPI 缩放一次，
+        // 而 PerMonitorV2 下系统已经处理过 DPI，于是窗口被缩小两轮
+        // （实测 125% 缩放时设定 1000×660 实际得到 800×528）。
+        // Font 模式会按字号自动调整控件布局，且不会动窗口尺寸。
+        AutoScaleMode = AutoScaleMode.Font;
 
         BuildLayout();
         BuildTray();
         LoadDisplays();
+        RestoreSettings();
 
-        _uiTimer.Interval = 400;
+        _uiTimer.Interval = 500;
         _uiTimer.Tick += (_, _) => RefreshAddress();
         _uiTimer.Start();
 
         AppendLog($"本机地址：{PenProtocol.DescribeLocalAddresses()}");
         AppendLog("在平板上点「扫描电脑」即可自动发现本机；也可以手动输入上面的地址。");
+        AppendLog($"压感能力：{(injector.PressureSupported ? $"支持（0~{injector.MaxPressure}）" : "不支持（只能表达有/无压力）")}");
+    }
+
+    /// <summary>把上次的设置套回界面。这样重开程序不用重新填一遍。</summary>
+    private void RestoreSettings()
+    {
+        _portBox.Value = Math.Clamp(_settings.Port, (int)_portBox.Minimum, (int)_portBox.Maximum);
+        _allowBox.Text = _settings.AllowedSender;
+        _allowCheck.Checked = _settings.RestrictSender;
+        if (_allowCheck.Checked)
+        {
+            _session.AllowedSender = _settings.AllowedSender;
+        }
+
+        if (string.Equals(_settings.MappingMode, nameof(MappingMode.AspectFit), StringComparison.OrdinalIgnoreCase))
+        {
+            _mappingBox.SelectedIndex = 1;
+        }
+
+        if (double.TryParse(_settings.TabletAspect, out var aspect) &&
+            aspect >= (double)_aspectBox.Minimum && aspect <= (double)_aspectBox.Maximum)
+        {
+            _aspectBox.Value = (decimal)aspect;
+        }
+
+        if (_settings.DisplayIndex >= 0 && _settings.DisplayIndex < _displayBox.Items.Count)
+        {
+            _displayBox.SelectedIndex = _settings.DisplayIndex;
+        }
+
+        ApplyMapping();
+
+        if (!string.IsNullOrWhiteSpace(_settings.AllowedSender) || _settings.RestrictSender)
+        {
+            AppendLog($"已载入上次设置：端口 {_settings.Port}" +
+                      (string.IsNullOrWhiteSpace(_settings.AllowedSender)
+                          ? string.Empty
+                          : $"，平板地址 {_settings.AllowedSender}"));
+        }
+    }
+
+    /// <summary>把界面上的当前值写回配置。</summary>
+    private void PersistSettings()
+    {
+        _settings.Port = (int)_portBox.Value;
+        _settings.AllowedSender = _allowBox.Text.Trim();
+        _settings.RestrictSender = _allowCheck.Checked;
+        _settings.MappingMode = _injector.Mode.ToString();
+        _settings.DisplayIndex = Math.Max(0, _displayBox.SelectedIndex);
+        _settings.TabletAspect = _aspectBox.Value.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        _settings.Save();
+    }
+
+    /// <summary>
+    /// 句柄创建后再套一次尺寸。
+    ///
+    /// 只在构造函数里设 Size 并不可靠：此时窗口还没有句柄，PerMonitorV2 下
+    /// 系统会按当前显示器 DPI 重新调整一次，实际尺寸可能比设定的更小
+    /// （实测设定 1000×660 得到 800×528），导致底部的「安全」分组被裁掉。
+    /// </summary>
+    protected override void OnLoad(EventArgs e)
+    {
+        base.OnLoad(e);
+        ApplyComfortableSize();
+
+        // 默认自动开始监听：否则每次开程序都要手点一下，
+        // 而「平板连不上」最常见的原因恰恰就是忘了点。
+        if (_settings.AutoStart && !_session.IsRunning)
+        {
+            ToggleListening();
+        }
+    }
+
+    /// <summary>
+    /// 把窗口调到舒适尺寸，但绝不超出屏幕工作区。
+    ///
+    /// 这里按工作区的比例取尺寸，而不是写死逻辑像素值：在非 100% 缩放的桌面上，
+    /// Form.Size 与实际物理像素之间存在换算（实测 125% 下请求 1000 只得到 800 物理像素），
+    /// 写死数值会让窗口在不同 DPI 的机器上明显偏小，把右侧日志和底部分组挤掉。
+    /// </summary>
+    private void ApplyComfortableSize()
+    {
+        var screen = Screen.FromControl(this);
+        var work = screen.WorkingArea;
+
+        // 取工作区的 62% 宽、80% 高，并限制上限，保证在小屏上也能完整放下
+        var width = Math.Min((int)(work.Width * 0.62), 1250);
+        var height = Math.Min((int)(work.Height * 0.80), 860);
+
+        if (WindowState != FormWindowState.Normal) WindowState = FormWindowState.Normal;
+        Size = new Size(width, height);
+        Location = new Point(
+            work.Left + (work.Width - width) / 2,
+            work.Top + (work.Height - height) / 2);
+
+        AppendLog($"窗口适配：屏幕 {work.Width}×{work.Height}，请求 {width}×{height}，" +
+                  $"实际 {Width}×{Height}，DPI {DeviceDpi}");
     }
 
     // ------------------------------------------------------------------ 布局
@@ -77,151 +204,159 @@ public sealed class PenReceiverForm : Form
             Dock = DockStyle.Fill,
             ColumnCount = 2,
             RowCount = 1,
-            Padding = new Padding(12),
+            Padding = new Padding(14, 12, 14, 12),
+            BackColor = PageBack,
         };
-        root.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 430));
+        root.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, SettingsColumnWidth));
         root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
 
-        root.Controls.Add(BuildSettingsPanel(), 0, 0);
+        var settings = BuildSettingsPanel();
+        settings.Margin = new Padding(0, 0, 14, 0);
+        root.Controls.Add(settings, 0, 0);
         root.Controls.Add(BuildLogPanel(), 1, 0);
         Controls.Add(root);
     }
 
     private Control BuildSettingsPanel()
     {
-        var panel = new TableLayoutPanel
+        // Dock=Top + 固定高度的分组框纵向堆叠；外层可滚动，
+        // 这样小窗口下也不会把底部的「安全」组裁掉。
+        var panel = new Panel
         {
             Dock = DockStyle.Fill,
-            ColumnCount = 1,
-            AutoSize = true,
-            Margin = new Padding(0, 0, 12, 0),
+            BackColor = PageBack,
+            AutoScroll = true,
         };
 
-        panel.Controls.Add(Group("连接", BuildConnectionGroup()));
-        panel.Controls.Add(Group("映射", BuildMappingGroup()));
-        panel.Controls.Add(Group("状态", BuildStatusGroup()));
-        panel.Controls.Add(Group("安全", BuildSecurityGroup()));
+        var groups = new Control[]
+        {
+            Group("连接", BuildConnectionGroup()),
+            Group("映射", BuildMappingGroup()),
+            Group("状态", BuildStatusGroup()),
+            Group("安全", BuildSecurityGroup()),
+        };
+
+        // Dock=Top 时，控件在 z-order 里越靠前显示在**越下面**，
+        // 所以这里倒序添加就能得到「连接 → 映射 → 状态 → 安全」的自上而下顺序。
+        // 注意不要再调 BringToFront：那会把顺序又翻回去（上一版就是栽在这里，
+        // 结果最上面的分组变成了「安全」）。
+        for (var i = groups.Length - 1; i >= 0; i--)
+        {
+            var group = groups[i];
+            group.Dock = DockStyle.Top;
+            panel.Controls.Add(group);
+        }
+
         return panel;
     }
 
-    private static GroupBox Group(string title, Control content)
+    private GroupBox Group(string title, Control content)
     {
-        content.Dock = DockStyle.Fill;
+        // 分组框高度按内容测量结果给，避免中文换行后内容被裁掉
+        var contentHeight = content.PreferredSize.Height;
         var box = new GroupBox
         {
             Text = title,
+            Height = contentHeight + 36,
             Dock = DockStyle.Top,
-            AutoSize = true,
-            AutoSizeMode = AutoSizeMode.GrowAndShrink,
             Margin = new Padding(0, 0, 0, 10),
-            Padding = new Padding(10),
-            ForeColor = Color.FromArgb(27, 27, 31),
+            Padding = new Padding(12, 6, 12, 8),
+            ForeColor = TextPrimary,
+            BackColor = Color.White,
         };
+
+        content.Dock = DockStyle.Fill;
         box.Controls.Add(content);
         return box;
     }
 
     private Control BuildConnectionGroup()
     {
-        var layout = new TableLayoutPanel
-        {
-            Dock = DockStyle.Fill,
-            ColumnCount = 3,
-            AutoSize = true,
-        };
-        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 64));
-        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 110));
+        var layout = Grid(rows: 2);
 
+        // ---- 第一行：端口 + 开始监听 ----
         layout.Controls.Add(Muted("监听端口"), 0, 0);
-
         _portBox.Minimum = 1;
         _portBox.Maximum = 65535;
         _portBox.Value = PenProtocol.DefaultPort;
         _portBox.Dock = DockStyle.Fill;
-        _portBox.Margin = new Padding(0, 2, 8, 2);
+        _portBox.Margin = new Padding(0, 3, 8, 3);
+        _portBox.Font = new Font("Consolas", 10f);
         layout.Controls.Add(_portBox, 1, 0);
 
-        _startButton.Text = "开始监听";
-        _startButton.Dock = DockStyle.Fill;
-        _startButton.Height = 30;
+        StyleButton(_startButton, "开始监听", primary: true);
         _startButton.Click += (_, _) => ToggleListening();
         layout.Controls.Add(_startButton, 2, 0);
 
-        _injectToggle.Text = "暂停注入";
-        _injectToggle.Dock = DockStyle.Fill;
-        _injectToggle.Height = 30;
-        _injectToggle.Margin = new Padding(0, 6, 0, 0);
-        _injectToggle.Click += (_, _) => ToggleInjection();
-        layout.Controls.Add(_injectToggle, 2, 1);
-
+        // ---- 第二行：平板地址 + 暂停注入 ----
         layout.Controls.Add(Muted("平板地址"), 0, 1);
-
         _allowBox.Dock = DockStyle.Fill;
-        _allowBox.Margin = new Padding(0, 4, 8, 2);
+        _allowBox.Margin = new Padding(0, 3, 8, 3);
         _allowBox.PlaceholderText = "例如 192.168.1.23";
         layout.Controls.Add(_allowBox, 1, 1);
+
+        StyleButton(_injectToggle, "暂停注入", primary: false);
+        _injectToggle.Click += (_, _) => ToggleInjection();
+        layout.Controls.Add(_injectToggle, 2, 1);
 
         return layout;
     }
 
     private Control BuildMappingGroup()
     {
-        var layout = new TableLayoutPanel
-        {
-            Dock = DockStyle.Fill,
-            ColumnCount = 2,
-            AutoSize = true,
-        };
-        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 76));
-        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        var layout = Grid(rows: 3);
 
         layout.Controls.Add(Muted("目标显示器"), 0, 0);
         _displayBox.Dock = DockStyle.Fill;
         _displayBox.DropDownStyle = ComboBoxStyle.DropDownList;
+        _displayBox.Margin = new Padding(0, 3, 0, 3);
         _displayBox.SelectedIndexChanged += (_, _) => ApplyMapping();
         layout.Controls.Add(_displayBox, 1, 0);
+        layout.SetColumnSpan(_displayBox, 2);
 
         layout.Controls.Add(Muted("映射方式"), 0, 1);
         _mappingBox.Dock = DockStyle.Fill;
         _mappingBox.DropDownStyle = ComboBoxStyle.DropDownList;
+        _mappingBox.Margin = new Padding(0, 3, 0, 3);
         _mappingBox.Items.AddRange(new object[] { "铺满整屏（推荐）", "等比缩放居中" });
         _mappingBox.SelectedIndex = 0;
         _mappingBox.SelectedIndexChanged += (_, _) => ApplyMapping();
         layout.Controls.Add(_mappingBox, 1, 1);
+        layout.SetColumnSpan(_mappingBox, 2);
 
         layout.Controls.Add(Muted("平板比例"), 0, 2);
-        var aspectRow = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, WrapContents = false };
+        var aspectRow = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            AutoSize = true,
+            WrapContents = false,
+            Margin = new Padding(0, 3, 0, 3),
+        };
         _aspectBox.DecimalPlaces = 2;
         _aspectBox.Increment = 0.01M;
         _aspectBox.Minimum = 0.5M;
         _aspectBox.Maximum = 4M;
         _aspectBox.Value = 1.60M;
-        _aspectBox.Width = 70;
+        _aspectBox.Width = 76;
+        _aspectBox.Font = new Font("Consolas", 10f);
         _aspectBox.ValueChanged += (_, _) => ApplyMapping();
         aspectRow.Controls.Add(_aspectBox);
         aspectRow.Controls.Add(new Label
         {
             Text = "宽 ÷ 高，仅在等比模式下生效",
             AutoSize = true,
-            Margin = new Padding(8, 6, 0, 0),
-            ForeColor = Color.FromArgb(95, 99, 104),
+            Margin = new Padding(10, 6, 0, 0),
+            ForeColor = TextMuted,
         });
         layout.Controls.Add(aspectRow, 1, 2);
+        layout.SetColumnSpan(aspectRow, 2);
 
         return layout;
     }
 
     private Control BuildStatusGroup()
     {
-        var layout = new TableLayoutPanel
-        {
-            Dock = DockStyle.Fill,
-            ColumnCount = 2,
-            AutoSize = true,
-        };
-        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 76));
-        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        var layout = Grid(rows: 6, rowHeight: 25);
 
         AddStatusRow(layout, 0, "运行状态", _stateValue);
         AddStatusRow(layout, 1, "本机地址", _addressValue);
@@ -233,28 +368,22 @@ public sealed class PenReceiverForm : Form
         return layout;
     }
 
-    private static void AddStatusRow(TableLayoutPanel layout, int row, string caption, Label value)
-    {
-        layout.Controls.Add(Muted(caption), 0, row);
-        value.Dock = DockStyle.Fill;
-        value.AutoSize = true;
-        value.ForeColor = Color.FromArgb(27, 27, 31);
-        layout.Controls.Add(value, 1, row);
-    }
-
     private Control BuildSecurityGroup()
     {
-        var layout = new FlowLayoutPanel
+        var layout = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
-            FlowDirection = FlowDirection.TopDown,
+            ColumnCount = 1,
             AutoSize = true,
-            WrapContents = false,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            Margin = new Padding(0),
         };
 
         _allowCheck.Text = "只接受上面填写的平板地址（防止局域网内其它设备乱注入）";
         _allowCheck.AutoSize = true;
-        _allowCheck.ForeColor = Color.FromArgb(27, 27, 31);
+        _allowCheck.MaximumSize = new Size(SettingsColumnWidth - 40, 0);
+        _allowCheck.ForeColor = TextPrimary;
+        _allowCheck.Margin = new Padding(0, 0, 0, 8);
         _allowCheck.CheckedChanged += (_, _) =>
         {
             _session.AllowedSender = _allowCheck.Checked ? _allowBox.Text.Trim() : null;
@@ -262,60 +391,120 @@ public sealed class PenReceiverForm : Form
                 ? $"已启用来源限制：{_allowBox.Text.Trim()}"
                 : "已关闭来源限制，接受局域网内任意设备");
         };
-        layout.Controls.Add(_allowCheck);
+        layout.Controls.Add(_allowCheck, 0, 0);
 
-        var applyButton = new Button
-        {
-            Text = "应用地址限制",
-            AutoSize = true,
-            Margin = new Padding(0, 6, 0, 0),
-        };
+        var applyButton = new Button();
+        StyleButton(applyButton, "应用地址限制", primary: false);
+        applyButton.AutoSize = true;
+        applyButton.AutoSizeMode = AutoSizeMode.GrowAndShrink;
+        applyButton.Dock = DockStyle.Left;
+        applyButton.Padding = new Padding(10, 4, 10, 4);
         applyButton.Click += (_, _) =>
         {
             _session.AllowedSender = _allowCheck.Checked ? _allowBox.Text.Trim() : null;
             AppendLog($"来源限制已更新：{(_allowCheck.Checked ? _allowBox.Text.Trim() : "不限")}");
         };
-        layout.Controls.Add(applyButton);
+        layout.Controls.Add(applyButton, 0, 1);
 
         return layout;
     }
 
     private Control BuildLogPanel()
     {
+        // 日志区做成白色卡片，与左侧设置区形成层次
+        var card = new Panel
+        {
+            Dock = DockStyle.Fill,
+            BackColor = Color.White,
+            Padding = new Padding(1),
+        };
+
         var layout = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
             ColumnCount = 1,
             RowCount = 2,
+            BackColor = Color.White,
         };
         layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 40));
+        layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 46));
 
         _log.Dock = DockStyle.Fill;
+        _log.BorderStyle = BorderStyle.None;
         _log.IntegralHeight = false;
-        _log.Font = new Font("Consolas", 9f);
+        _log.Font = new Font("Consolas", 9.5f);
         _log.HorizontalScrollbar = true;
+        _log.BackColor = Color.White;
+        _log.ForeColor = TextPrimary;
+        _log.Margin = new Padding(10, 10, 10, 4);
         layout.Controls.Add(_log, 0, 0);
 
-        var buttons = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.LeftToRight };
-        var clearButton = new Button { Text = "清空日志", AutoSize = true };
-        clearButton.Click += (_, _) =>
+        var buttons = new FlowLayoutPanel
         {
-            _log.Items.Clear();
-            _logCount = 0;
+            Dock = DockStyle.Fill,
+            FlowDirection = FlowDirection.LeftToRight,
+            Padding = new Padding(10, 0, 10, 8),
+            BackColor = Color.White,
         };
-        buttons.Controls.Add(clearButton);
 
-        var minimizeButton = new Button { Text = "缩到托盘", AutoSize = true };
-        minimizeButton.Click += (_, _) => HideToTray();
-        buttons.Controls.Add(minimizeButton);
-
-        var exitButton = new Button { Text = "停止并退出", AutoSize = true };
-        exitButton.Click += (_, _) => ShutdownAndExit();
-        buttons.Controls.Add(exitButton);
+        foreach (var (text, action) in new (string, Action)[]
+        {
+            ("清空日志", () => { _log.Items.Clear(); _logCount = 0; }),
+            ("缩到托盘", HideToTray),
+            ("停止并退出", ShutdownAndExit),
+        })
+        {
+            var button = new Button();
+            StyleButton(button, text, primary: false);
+            button.AutoSize = true;
+            button.AutoSizeMode = AutoSizeMode.GrowAndShrink;
+            button.Dock = DockStyle.None;
+            button.Padding = new Padding(10, 4, 10, 4);
+            button.Click += (_, _) => action();
+            buttons.Controls.Add(button);
+        }
 
         layout.Controls.Add(buttons, 0, 1);
+        card.Controls.Add(layout);
+        return card;
+    }
+
+    // ------------------------------------------------------------------ 控件工厂
+
+    /// <summary>三列网格：标签 | 输入（拉伸） | 按钮（固定宽）。</summary>
+    private static TableLayoutPanel Grid(int rows, int rowHeight = 34)
+    {
+        var layout = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 3,
+            RowCount = rows,
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            Margin = new Padding(0),
+        };
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, LabelColumnWidth));
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        // 按钮列固定宽度，保证「开始监听」四个字完整显示
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 120));
+        for (var i = 0; i < rows; i++)
+        {
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, rowHeight));
+        }
         return layout;
+    }
+
+    private static void AddStatusRow(TableLayoutPanel layout, int row, string caption, Label value)
+    {
+        layout.Controls.Add(Muted(caption), 0, row);
+        value.Dock = DockStyle.Fill;
+        value.AutoSize = false;
+        value.ForeColor = TextPrimary;
+        value.TextAlign = ContentAlignment.MiddleLeft;
+        // 地址可能很长，超出时用省略号而不是把列撑开
+        value.AutoEllipsis = true;
+        layout.Controls.Add(value, 1, row);
+        layout.SetColumnSpan(value, 2);
     }
 
     private static Label Muted(string text)
@@ -324,9 +513,33 @@ public sealed class PenReceiverForm : Form
         {
             Text = text,
             AutoSize = true,
-            Margin = new Padding(0, 6, 8, 0),
-            ForeColor = Color.FromArgb(95, 99, 104),
+            Margin = new Padding(0, 8, 8, 0),
+            ForeColor = TextMuted,
         };
+    }
+
+    private static void StyleButton(Button button, string text, bool primary)
+    {
+        button.Text = text;
+        button.AutoSize = false;
+        button.FlatStyle = FlatStyle.Flat;
+        button.FlatAppearance.BorderSize = primary ? 0 : 1;
+        button.Cursor = Cursors.Hand;
+        button.UseVisualStyleBackColor = false;
+
+        if (primary)
+        {
+            button.BackColor = Color.FromArgb(88, 86, 214);
+            button.ForeColor = Color.White;
+            button.Dock = DockStyle.Fill;
+        }
+        else
+        {
+            button.BackColor = Color.FromArgb(240, 241, 244);
+            button.ForeColor = TextPrimary;
+            button.FlatAppearance.BorderColor = Color.FromArgb(210, 213, 218);
+            button.Dock = DockStyle.Fill;
+        }
     }
 
     private void BuildTray()
@@ -337,11 +550,26 @@ public sealed class PenReceiverForm : Form
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("停止并退出", null, (_, _) => ShutdownAndExit());
 
-        _tray.Icon = SystemIcons.Application;
+        _tray.Icon = LoadAppIcon() ?? SystemIcons.Application;
         _tray.Text = "无线手写板接收端";
         _tray.ContextMenuStrip = menu;
         _tray.DoubleClick += (_, _) => RestoreFromTray();
         _tray.Visible = true;
+    }
+
+    /// <summary>用可执行文件里内嵌的图标做托盘图标；取不到就退回系统默认。</summary>
+    private static Icon? LoadAppIcon()
+    {
+        try
+        {
+            var exe = Environment.ProcessPath;
+            if (string.IsNullOrEmpty(exe)) return null;
+            return Icon.ExtractAssociatedIcon(exe);
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     // ------------------------------------------------------------------ 行为
@@ -372,6 +600,10 @@ public sealed class PenReceiverForm : Form
 
         _injector.Mode = _mappingBox.SelectedIndex == 1 ? MappingMode.AspectFit : MappingMode.Stretch;
         _injector.TabletAspect = (double)_aspectBox.Value;
+
+        // 这三个控件的任何一个变化都会走到这里，顺手把设置落盘，
+        // 用户就不用手动「保存」了
+        PersistSettings();
     }
 
     private void ToggleListening()
@@ -426,9 +658,7 @@ public sealed class PenReceiverForm : Form
             _stateValue.Text = status.IsRunning
                 ? $"监听中 · UDP {status.Port}"
                 : "未监听";
-            _stateValue.ForeColor = status.IsRunning
-                ? Color.FromArgb(24, 128, 56)
-                : Color.FromArgb(154, 160, 166);
+            _stateValue.ForeColor = status.IsRunning ? OkGreen : TextMuted;
 
             _rateValue.Text = status.IsRunning
                 ? $"{status.Rate:F0} 报文/秒 · 累计 {status.Stats.Packets}"
@@ -438,26 +668,18 @@ public sealed class PenReceiverForm : Form
             _qualityValue.Text = status.Stats.Packets == 0
                 ? "暂无数据"
                 : $"丢包 {dropped} · 断序 {status.Stats.SequenceGaps} · 兜底抬笔 {status.ForcedUps}";
-            _qualityValue.ForeColor = dropped == 0
-                ? Color.FromArgb(24, 128, 56)
-                : Color.FromArgb(178, 106, 0);
+            _qualityValue.ForeColor = dropped == 0 ? OkGreen : WarnOrange;
 
             _penValue.Text = status.PenDown ? "按下" : "抬起";
-            _penValue.ForeColor = status.PenDown
-                ? Color.FromArgb(178, 106, 0)
-                : Color.FromArgb(27, 27, 31);
+            _penValue.ForeColor = status.PenDown ? WarnOrange : TextPrimary;
 
-            _adminValue.Text = status.HasInjected
-                ? "正常（已成功注入）"
-                : "等待首次注入…";
-            _adminValue.ForeColor = status.HasInjected
-                ? Color.FromArgb(24, 128, 56)
-                : Color.FromArgb(95, 99, 104);
+            _adminValue.Text = status.HasInjected ? "正常（已成功注入）" : "等待首次注入…";
+            _adminValue.ForeColor = status.HasInjected ? OkGreen : TextMuted;
 
             if (!string.IsNullOrEmpty(status.LastInjectionError))
             {
                 _adminValue.Text = $"注入失败：{status.LastInjectionError}";
-                _adminValue.ForeColor = Color.FromArgb(197, 34, 31);
+                _adminValue.ForeColor = ErrorRed;
             }
 
             if (status.LastSender != null)
@@ -520,10 +742,10 @@ public sealed class PenReceiverForm : Form
         ForceForeground(Handle);
     }
 
-    [DllImport("user32.dll")]
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
     private static extern bool SetForegroundWindow(IntPtr hWnd);
 
-    [DllImport("user32.dll")]
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
     private static extern bool SetWindowPos(
         IntPtr hWnd, IntPtr hWndInsertAfter, int x, int y, int cx, int cy, uint flags);
 

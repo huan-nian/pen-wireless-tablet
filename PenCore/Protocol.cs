@@ -29,16 +29,19 @@ public enum PenAction
 ///
 /// HELLO 报文（8 字节）magic = 0x504E4230 "PNB0"，用于 Android 端扫描发现本机。
 /// REPLY 报文（12 字节）magic = 0x504E4231 "PNB1"，本机对探测的回复，携带端口。
+/// CMD 报文（8 字节）magic = 0x504E4233 "PNB3"，平板上的快捷按钮要求电脑执行一个操作。
 /// </summary>
 public static class PenProtocol
 {
     public const uint MagicPen = 0x504E4232;
     public const uint MagicHello = 0x504E4230;
     public const uint MagicReply = 0x504E4231;
+    public const uint MagicCommand = 0x504E4233;
 
     public const int PenPacketSize = 36;
     public const int HelloPacketSize = 8;
     public const int ReplyPacketSize = 12;
+    public const int CommandPacketSize = 8;
 
     public const int FlagEraser = 1;
 
@@ -69,6 +72,34 @@ public static class PenProtocol
     {
         return data.Length >= HelloPacketSize &&
                BinaryPrimitives.ReadUInt32LittleEndian(data) == MagicHello;
+    }
+
+    /// <summary>
+    /// 解析系统命令报文。
+    ///
+    /// 平板左侧那排按钮（桌面 / 多任务 / 保存 / 撤销 / 重做 / 滚轮 / 详情 / 退出）都通过
+    /// 这个报文下发。它们不是笔输入，所以单独一种报文类型，不和 PEN 混在一起。
+    /// </summary>
+    public static bool TryParseCommand(ReadOnlySpan<byte> data, out SystemCommand command)
+    {
+        command = SystemCommand.None;
+        if (data.Length < CommandPacketSize) return false;
+        if (BinaryPrimitives.ReadUInt32LittleEndian(data) != MagicCommand) return false;
+
+        var code = BinaryPrimitives.ReadInt32LittleEndian(data.Slice(4));
+        if (!Enum.IsDefined(typeof(SystemCommand), code)) return false;
+
+        command = (SystemCommand)code;
+        return true;
+    }
+
+    /// <summary>构造系统命令报文。主要供自检与连通性测试使用。</summary>
+    public static byte[] BuildCommand(SystemCommand command)
+    {
+        var buffer = new byte[CommandPacketSize];
+        BinaryPrimitives.WriteUInt32LittleEndian(buffer.AsSpan(0), MagicCommand);
+        BinaryPrimitives.WriteInt32LittleEndian(buffer.AsSpan(4), (int)command);
+        return buffer;
     }
 
     /// <summary>构造对探测报文的回复，告诉 Android 端本机在监听哪个端口。</summary>
@@ -141,6 +172,35 @@ public static class PenProtocol
     }
 }
 
+/// <summary>
+/// 平板快捷按钮对应的电脑端操作。编号一旦发布就不能改，否则新旧两端会错位。
+/// </summary>
+public enum SystemCommand
+{
+    None = 0,
+
+    /// <summary>桌面：最小化所有窗口。</summary>
+    ShowDesktop = 1,
+
+    /// <summary>多任务：打开任务视图（各窗口与虚拟桌面）。</summary>
+    TaskView = 2,
+
+    /// <summary>保存：Ctrl+S。</summary>
+    Save = 3,
+
+    /// <summary>撤销：Ctrl+Z。</summary>
+    Undo = 4,
+
+    /// <summary>取消撤销（重做）：Ctrl+Y。</summary>
+    Redo = 5,
+
+    /// <summary>滚轮上滚。</summary>
+    ScrollUp = 6,
+
+    /// <summary>滚轮下滚。</summary>
+    ScrollDown = 7,
+}
+
 [Flags]
 public enum PenFlags
 {
@@ -186,4 +246,19 @@ public readonly struct PenDatagram
 
     public PenPacket Packet { get; }
     public IPEndPoint Source { get; }
+}
+
+/// <summary>
+/// 本项目用到的虚拟键码。只列需要的几个，避免引入整个 Windows.System 命名空间。
+/// 数值取自 Windows 虚拟键码定义（winuser.h）。
+/// </summary>
+public enum VirtualKey : ushort
+{
+    Tab = 0x09,
+    Control = 0x11,
+    D = 0x44,
+    S = 0x53,
+    Y = 0x59,
+    Z = 0x5A,
+    LeftWindows = 0x5B,
 }
