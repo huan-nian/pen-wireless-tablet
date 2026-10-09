@@ -14,12 +14,12 @@
     <style name="Theme.PenClient" parent="Base.Theme.PenClient" />
 
     <!--
-      书写页主题：整页深色，书写时不该有浅色系统栏干扰。
-      状态栏也用深色底 + 浅色图标。
+      书写页主题：整页暖灰调，书写时不该有浅色系统栏或纯黑边框干扰。
+      状态栏与导航栏都跟随页面底色，图标用浅色。
     -->
     <style name="Theme.PenClient.Fullscreen" parent="Base.Theme.PenClient">
-        <item name="android:statusBarColor">@color/fullscreen_bg</item>
-        <item name="android:navigationBarColor">@color/fullscreen_bg</item>
+        <item name="android:statusBarColor">@color/toolbar_bg</item>
+        <item name="android:navigationBarColor">@color/toolbar_bg</item>
         <item name="android:windowLightStatusBar" tools:targetApi="m">false</item>
         <item name="android:windowLightNavigationBar" tools:targetApi="o_mr1">false</item>
     </style>

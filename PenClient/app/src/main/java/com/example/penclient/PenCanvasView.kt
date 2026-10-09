@@ -70,13 +70,13 @@ class PenCanvasView @JvmOverloads constructor(
         }
 
     /**
-     * 书写区背景色。默认纯白（大多数书写/绘画场景的习惯底色），
-     * 可在界面上换成护眼底色等。
+     * 书写区背景色。默认暖白（与 ClientSettings 的默认值一致），比纯白柔和，
+     * 长时间书写不刺眼；可在界面上换成护眼底色等。
      *
      * 不能叫 backgroundColor：View 已经有 setBackgroundColor(int)，
      * Kotlin 属性生成的 setter 会与它 JVM 签名冲突，编译直接报 Accidental override。
      */
-    var inkBackgroundColor: Int = Color.WHITE
+    var inkBackgroundColor: Int = Color.parseColor("#F7F5F0")
         set(value) {
             if (field == value) return
             field = value

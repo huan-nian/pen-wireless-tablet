@@ -35,22 +35,37 @@
     <string name="tool_detail">详情</string>
     <string name="tool_close">退出</string>
 
-    <string name="canvas_live_hint">用触控笔在此书写</string>
     <string name="pen_idle">压感 — · 倾斜 —</string>
     <string name="pen_active">压感 %1$d%% · 倾斜 %2$d°/%3$d°%4$s</string>
     <string name="pen_eraser"> · 橡皮</string>
     <string name="pen_long_press">已识别长按 · 松开弹出右键菜单</string>
     <string name="toast_long_press">长按已识别，松开后电脑上弹出右键菜单</string>
 
+    <!-- ==================== 底色 ==================== -->
     <string name="action_background">背景</string>
     <string name="dialog_background_title">书写区背景颜色</string>
+    <string name="color_default">暖白</string>
+    <string name="color_pure_white">纯白</string>
+    <string name="color_cream">护眼米黄</string>
+    <string name="color_light_gray">浅灰</string>
+    <string name="color_bean_green">豆沙绿</string>
+    <string name="color_light_blue">浅蓝</string>
+    <string name="color_lilac">淡紫</string>
+    <string name="color_slate">深板岩</string>
+    <string name="color_ink">浓墨</string>
+    <string name="toast_background_changed">底色已切换为「%1$s」</string>
 
+    <!-- ==================== 笔迹消退 ==================== -->
     <string name="ink_mode_never">笔迹永存</string>
     <string name="ink_mode_5s">笔迹 5 秒</string>
     <string name="ink_mode_10s">笔迹 10 秒</string>
     <string name="ink_mode_1m">笔迹 1 分钟</string>
-    <string name="dialog_ink_mode_title">笔迹消退时间</string>
-    <string name="ink_mode_hint">停笔后按所选时间自动清空平板上的笔迹；电脑上的笔迹不受影响。</string>
+    <!--
+      说明文字放在标题里而不是 setMessage：Material 的 AlertDialog 同时设置
+      message 与 singleChoiceItems 时会把选项列表吞掉。
+    -->
+    <string name="dialog_ink_mode_title_with_hint">停笔后清空平板笔迹（不影响电脑）</string>
+    <string name="toast_ink_mode_changed">已设为「%1$s」</string>
 
     <string name="toast_sent">已发送：%1$s</string>
     <string name="toast_command_failed">发送失败：尚未连接电脑</string>

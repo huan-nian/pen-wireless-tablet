@@ -8,6 +8,6 @@
     <dimen name="tool_button_size">48dp</dimen>
     <!-- 快捷按钮的图标尺寸（inside 按钮） -->
     <dimen name="tool_icon_size">26dp</dimen>
-    <!-- 按钮之间的分隔线高度 -->
-    <dimen name="tool_divider_height">12dp</dimen>
+    <!-- 按钮分组之间的间隔：留白而不是画线，视觉更干净 -->
+    <dimen name="tool_divider_height">8dp</dimen>
 </resources>

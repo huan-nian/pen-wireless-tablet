@@ -8,9 +8,14 @@ import android.os.Looper
 import android.view.View
 import android.view.WindowManager
 import android.widget.Toast
+import androidx.annotation.ColorRes
+import androidx.annotation.StringRes
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.updatePadding
 import com.example.penclient.databinding.ActivityFullscreenBinding
 
 /**
@@ -51,6 +56,8 @@ class PenBoardActivity : AppCompatActivity(), PenCanvasView.Listener {
         settings = ClientSettings(this)
         inkRetention = settings.inkRetention
 
+        applyWindowInsets()
+
         binding.canvas.sender = sender
         binding.canvas.listener = this
         binding.canvas.inkBackgroundColor = settings.canvasColor
@@ -68,6 +75,33 @@ class PenBoardActivity : AppCompatActivity(), PenCanvasView.Listener {
         }
     }
 
+    /**
+     * 把状态栏与导航栏占用的空间作为内边距加到根布局上。
+     *
+     * 为什么需要：这一页没有用 fitsSystemWindows，内容会从屏幕最顶端开始画，
+     * 最上面一排按钮会被状态栏压住。
+     *
+     * 更关键的是底部：手势导航的屏幕底部有一条系统手势区（上滑回桌面），
+     * 落在里面的点击会被系统吃掉。而系统**不一定**把这条手势区作为导航栏 inset
+     * 报告出来（实测这台平板 `mHasBottomNavigationBar=false`，底部 inset 是 0），
+     * 所以除了 inset 还要额外预留一段高度，否则底部按钮会紧贴屏幕边缘而点不动。
+     */
+    private fun applyWindowInsets() {
+        // 手势区预留高度：24dp（≈ 系统手势条高度），系统报了更大的 inset 就用系统的
+        val gestureReserve = (24 * resources.displayMetrics.density).toInt()
+
+        ViewCompat.setOnApplyWindowInsetsListener(binding.root) { view, insets ->
+            val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+            view.updatePadding(
+                left = bars.left,
+                top = bars.top,
+                right = bars.right,
+                bottom = maxOf(bars.bottom, gestureReserve),
+            )
+            insets
+        }
+    }
+
     private fun applyKeepScreenOn() {
         if (settings.keepScreenOn) {
             window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
@@ -77,13 +111,13 @@ class PenBoardActivity : AppCompatActivity(), PenCanvasView.Listener {
     // ------------------------------------------------------------ 左侧按钮
 
     private fun wireToolbar() {
-        binding.btnHome.setOnClickListener { send(Command.HOME) }
-        binding.btnTask.setOnClickListener { send(Command.TASK) }
-        binding.btnSave.setOnClickListener { send(Command.SAVE) }
-        binding.btnUndo.setOnClickListener { send(Command.UNDO) }
-        binding.btnRedo.setOnClickListener { send(Command.REDO) }
-        binding.btnScrollUp.setOnClickListener { send(Command.SCROLL_UP) }
-        binding.btnScrollDown.setOnClickListener { send(Command.SCROLL_DOWN) }
+        binding.btnHome.setOnClickListener { send(BoardCommand.HOME) }
+        binding.btnTask.setOnClickListener { send(BoardCommand.TASK) }
+        binding.btnSave.setOnClickListener { send(BoardCommand.SAVE) }
+        binding.btnUndo.setOnClickListener { send(BoardCommand.UNDO) }
+        binding.btnRedo.setOnClickListener { send(BoardCommand.REDO) }
+        binding.btnScrollUp.setOnClickListener { send(BoardCommand.SCROLL_UP) }
+        binding.btnScrollDown.setOnClickListener { send(BoardCommand.SCROLL_DOWN) }
         binding.btnDetail.setOnClickListener { finish() }
         binding.btnClose.setOnClickListener { exitApp() }
     }
@@ -91,9 +125,9 @@ class PenBoardActivity : AppCompatActivity(), PenCanvasView.Listener {
     /**
      * 每个按钮对应的命令。本地操作（详情 / 退出）不在这里，直接绑到 finish / exitApp。
      */
-    private enum class Command(
+    private enum class BoardCommand(
         val code: Int,
-        @androidx.annotation.StringRes val labelRes: Int
+        @StringRes val labelRes: Int
     ) {
         HOME(PenProtocol.Command.SHOW_DESKTOP, R.string.tool_home),
         TASK(PenProtocol.Command.TASK_VIEW, R.string.tool_task),
@@ -104,7 +138,7 @@ class PenBoardActivity : AppCompatActivity(), PenCanvasView.Listener {
         SCROLL_DOWN(PenProtocol.Command.SCROLL_DOWN, R.string.tool_scroll_down),
     }
 
-    private fun send(command: Command) {
+    private fun send(command: BoardCommand) {
         if (!sender.isConnected) {
             toast(getString(R.string.toast_command_failed))
             return
@@ -129,33 +163,37 @@ class PenBoardActivity : AppCompatActivity(), PenCanvasView.Listener {
         binding.btnInkMode.setOnClickListener { showInkModePicker() }
     }
 
+    /** 一个预设底色。 */
+    private data class ColorPreset(@StringRes val nameRes: Int, val color: Int)
+
     /**
      * 背景色选择。
      *
-     * 用一列预设色而不是完整的取色器：书写底色在实用范围内就那么几种
-     * （白色、护眼米黄、深色），预设更省事也更容易点准。
+     * 用一组预设色而不是完整的取色器：书写底色常用就那么几种，预设更省事也更容易点准。
+     * 底色整体偏柔和（暖白、米黄、浅灰…），避免与深色底形成强烈对比。
      */
     private fun showBackgroundPicker() {
         val presets = listOf(
-            "纯白" to Color.WHITE,
-            "护眼米黄" to Color.parseColor("#FAF3E3"),
-            "浅灰" to Color.parseColor("#EFEFEF"),
-            "豆沙绿" to Color.parseColor("#CCE8CF"),
-            "浅蓝" to Color.parseColor("#E3F2FD"),
-            "淡紫" to Color.parseColor("#F3E5F5"),
-            "深灰" to Color.parseColor("#3C3F41"),
-            "纯黑" to Color.BLACK,
+            ColorPreset(R.string.color_default, Color.parseColor("#F7F5F0")),
+            ColorPreset(R.string.color_pure_white, Color.WHITE),
+            ColorPreset(R.string.color_cream, Color.parseColor("#FAF3E3")),
+            ColorPreset(R.string.color_light_gray, Color.parseColor("#EDEDEA")),
+            ColorPreset(R.string.color_bean_green, Color.parseColor("#DCE8D8")),
+            ColorPreset(R.string.color_light_blue, Color.parseColor("#E2EAF2")),
+            ColorPreset(R.string.color_lilac, Color.parseColor("#EAE4F2")),
+            ColorPreset(R.string.color_slate, Color.parseColor("#4A4E55")),
+            ColorPreset(R.string.color_ink, Color.parseColor("#2B2E33")),
         )
 
-        val names = presets.map { it.first }.toTypedArray()
-        val current = presets.indexOfFirst { it.second == binding.canvas.inkBackgroundColor }
+        val names = presets.map { getString(it.nameRes) }.toTypedArray()
+        val current = presets.indexOfFirst { it.color == binding.canvas.inkBackgroundColor }
 
         AlertDialog.Builder(this)
             .setTitle(R.string.dialog_background_title)
             .setSingleChoiceItems(names, current) { dialog, which ->
-                val color = presets[which].second
-                binding.canvas.inkBackgroundColor = color
-                settings.canvasColor = color
+                val preset = presets[which]
+                applyCanvasColor(preset.color)
+                toast(getString(R.string.toast_background_changed, getString(preset.nameRes)))
                 dialog.dismiss()
             }
             .setNegativeButton(android.R.string.cancel, null)
@@ -163,38 +201,47 @@ class PenBoardActivity : AppCompatActivity(), PenCanvasView.Listener {
     }
 
     /**
-     * 笔迹消退时间。只影响平板上的预览笔迹，电脑上的笔迹不受影响——
-     * 这一点必须写清楚，否则用户会以为电脑上的画也会被擦掉。
+     * 应用新的画布底色。
+     *
+     * 换底色时把画布清空：底色变了如果笔迹还留着，视觉上会像是「笔迹浮在新底色之上」，
+     * 反而让人以为没换成功（这一条来自实际反馈）。清掉后新底色一目了然。
+     */
+    private fun applyCanvasColor(color: Int) {
+        if (binding.canvas.inkBackgroundColor == color) return
+        binding.canvas.inkBackgroundColor = color
+        settings.canvasColor = color
+        binding.canvas.clearInk()
+    }
+
+    /**
+     * 笔迹消退时间。
+     *
+     * 注意这里**不能**用 setMessage 放说明文字：实测 Material 的 AlertDialog 在
+     * 同时设置 message 与 singleChoiceItems 时，会只渲染 message，把选项列表整块吞掉，
+     * 表现为「打开对话框只看到一句说明和取消按钮、选不了任何东西」。
+     * 所以说明文字放在标题里，保证选项一定可见。
      */
     private fun showInkModePicker() {
         val modes = InkRetention.entries
-        val names = modes.map { getString(inkModeLabel(it)) }.toTypedArray()
+        val names = modes.map { getString(it.labelRes) }.toTypedArray()
         val current = modes.indexOf(inkRetention)
 
         AlertDialog.Builder(this)
-            .setTitle(R.string.dialog_ink_mode_title)
+            .setTitle(R.string.dialog_ink_mode_title_with_hint)
             .setSingleChoiceItems(names, current) { dialog, which ->
                 inkRetention = modes[which]
                 settings.inkRetention = inkRetention
                 refreshInkModeLabel()
                 scheduleInkClear()
+                toast(getString(R.string.toast_ink_mode_changed, getString(inkRetention.labelRes)))
                 dialog.dismiss()
             }
             .setNegativeButton(android.R.string.cancel, null)
-            .setMessage(R.string.ink_mode_hint)
             .show()
     }
 
-    @androidx.annotation.StringRes
-    private fun inkModeLabel(mode: InkRetention): Int = when (mode) {
-        InkRetention.NEVER -> R.string.ink_mode_never
-        InkRetention.SECONDS_5 -> R.string.ink_mode_5s
-        InkRetention.SECONDS_10 -> R.string.ink_mode_10s
-        InkRetention.MINUTE_1 -> R.string.ink_mode_1m
-    }
-
     private fun refreshInkModeLabel() {
-        binding.btnInkMode.setText(inkModeLabel(inkRetention))
+        binding.btnInkMode.setText(inkRetention.labelRes)
     }
 
     /**
@@ -214,11 +261,9 @@ class PenBoardActivity : AppCompatActivity(), PenCanvasView.Listener {
     override fun onPenEvent(info: PenCanvasView.PenStatus) {
         penInContact = info.inContact
 
-        // 只要还有输入就不断把清除时间往后推
-        if (info.inContact || info.hovering) {
-            scheduleInkClear()
-        } else if (info.sentPackets > 0) {
-            // 抬笔：从现在开始计时，这样「写完 5 秒后消失」是写完才开始算
+        // 只要还有输入就不断把清除时间往后推；
+        // 抬笔后同样排一次，这样「写完 N 秒后消失」是从停笔开始算的
+        if (info.inContact || info.hovering || info.sentPackets > 0) {
             scheduleInkClear()
         }
 
@@ -262,14 +307,12 @@ class PenBoardActivity : AppCompatActivity(), PenCanvasView.Listener {
         ui.postDelayed(statusUpdater, 1000)
     }
 
-    private fun renderStatus(text: String, @androidx.annotation.ColorRes colorRes: Int) {
+    private fun renderStatus(text: String, @ColorRes colorRes: Int) {
         binding.statusText.text = text
-        binding.statusDot.backgroundTintList =
-            ColorStateList.valueOf(ContextCompat.getColor(this, colorRes))
-        binding.canvasOverlay.visibility = View.GONE
+        setDot(colorRes)
     }
 
-    private fun setDot(@androidx.annotation.ColorRes colorRes: Int) {
+    private fun setDot(@ColorRes colorRes: Int) {
         binding.statusDot.backgroundTintList =
             ColorStateList.valueOf(ContextCompat.getColor(this, colorRes))
     }

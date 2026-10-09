@@ -1,6 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  书写页：左侧一列快捷按钮，右侧是整块白色书写区。
+  书写页：左侧一列快捷按钮，右侧是整块书写区。
+
+  布局上的两个要点：
+    1. 整页不做 fitsSystemWindows，而是由代码把状态栏 / 导航栏的信息作为内边距
+       加到根布局上（见 PenBoardActivity.applyWindowInsets）。这样顶部不会被状态栏
+       压住，底部也不会被手势导航条挡住按钮。
+    2. 上下留白刻意保持接近：原来底部只靠 paddingBottom 撑出约 10% 屏高的黑边，
+       显得头重脚轻，现在底部只留必要的一行。
 
   按钮顺序（从上到下）与 Windows 端快捷键的对应关系：
     home     → Win + D        最小化所有窗口回到桌面
@@ -18,9 +25,11 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/fullscreen_bg"
+    android:background="@color/page_bg"
+    android:clipToPadding="false"
     android:orientation="horizontal">
 
     <!-- ================= 左侧快捷按钮列 ================= -->
@@ -37,8 +46,8 @@
             android:layout_height="wrap_content"
             android:gravity="center_horizontal"
             android:orientation="vertical"
-            android:paddingTop="8dp"
-            android:paddingBottom="8dp">
+            android:paddingTop="6dp"
+            android:paddingBottom="10dp">
 
             <ImageButton
                 android:id="@+id/btnHome"
@@ -102,50 +111,37 @@
         </LinearLayout>
     </ScrollView>
 
-    <!-- ================= 书写区 ================= -->
+    <!-- ================= 书写区 + 底部一行 ================= -->
     <LinearLayout
         android:layout_width="0dp"
         android:layout_height="match_parent"
         android:layout_weight="1"
         android:orientation="vertical">
 
-        <FrameLayout
+        <com.example.penclient.PenCanvasView
+            android:id="@+id/canvas"
             android:layout_width="match_parent"
             android:layout_height="0dp"
-            android:layout_margin="8dp"
-            android:layout_weight="1">
+            android:layout_marginStart="8dp"
+            android:layout_marginTop="8dp"
+            android:layout_marginEnd="8dp"
+            android:layout_weight="1" />
 
-            <com.example.penclient.PenCanvasView
-                android:id="@+id/canvas"
-                android:layout_width="match_parent"
-                android:layout_height="match_parent" />
-
-            <TextView
-                android:id="@+id/canvasOverlay"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_gravity="top|start"
-                android:layout_margin="16dp"
-                android:text="@string/canvas_live_hint"
-                android:textAppearance="?attr/textAppearanceBodyMedium"
-                android:textColor="@color/overlay_text" />
-        </FrameLayout>
-
-        <!-- 底部：连接状态 / 背景色 / 笔迹消退模式 -->
+        <!-- 底部一行：连接状态 + 背景色 + 笔迹消退。只占一行高度，不再撑出大黑边 -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:gravity="center_vertical"
             android:orientation="horizontal"
-            android:paddingStart="16dp"
+            android:paddingStart="14dp"
             android:paddingTop="2dp"
-            android:paddingEnd="16dp"
-            android:paddingBottom="10dp">
+            android:paddingEnd="10dp"
+            android:paddingBottom="2dp">
 
             <View
                 android:id="@+id/statusDot"
-                android:layout_width="10dp"
-                android:layout_height="10dp"
+                android:layout_width="9dp"
+                android:layout_height="9dp"
                 android:background="@drawable/dot_idle" />
 
             <TextView
@@ -157,31 +153,35 @@
                 android:ellipsize="end"
                 android:maxLines="1"
                 android:textAppearance="?attr/textAppearanceBodySmall"
-                android:textColor="@color/toolbar_icon"
-                tools:text="已连接 192.168.1.107:8888" />
+                android:textColor="@color/text_soft"
+                tools:text="已连接 192.168.1.109:8888" />
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/btnBackground"
                 style="@style/Widget.Material3.Button.TextButton"
                 android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
+                android:layout_height="40dp"
                 android:minWidth="0dp"
+                android:paddingStart="10dp"
+                android:paddingEnd="10dp"
                 android:text="@string/action_background"
-                android:textColor="@color/toolbar_icon"
+                android:textColor="@color/text_soft"
                 app:icon="@drawable/ic_palette"
-                app:iconTint="@color/toolbar_icon" />
+                app:iconTint="@color/text_soft" />
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/btnInkMode"
                 style="@style/Widget.Material3.Button.TextButton"
                 android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="4dp"
+                android:layout_height="40dp"
+                android:layout_marginStart="2dp"
                 android:minWidth="0dp"
+                android:paddingStart="10dp"
+                android:paddingEnd="10dp"
                 android:text="@string/ink_mode_never"
-                android:textColor="@color/toolbar_icon"
+                android:textColor="@color/text_soft"
                 app:icon="@drawable/ic_timer"
-                app:iconTint="@color/toolbar_icon" />
+                app:iconTint="@color/text_soft" />
         </LinearLayout>
     </LinearLayout>
 </LinearLayout>

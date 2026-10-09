@@ -47,13 +47,18 @@ class MainActivity : AppCompatActivity() {
         refreshConnectionUi()
 
         // 允许通过 adb / 其它应用带上地址直接启动，方便自动化验证：
-        //   adb shell am start -n com.example.penclient/.MainActivity --es host 192.168.1.5
+        //   adb shell am start -n com.example.penclient/.MainActivity \
+        //       --es host 192.168.1.5 --ez openBoard true
+        // openBoard 只是给自动化测试用的钩子，正常使用不会带这个参数。
         intent?.getStringExtra(EXTRA_HOST)?.let { host ->
             binding.hostInput.setText(host)
             binding.portInput.setText(
                 intent.getIntExtra(EXTRA_PORT, PenProtocol.DEFAULT_PORT).toString()
             )
             connect()
+            if (intent.getBooleanExtra(EXTRA_OPEN_BOARD, false)) {
+                openWritingPage()
+            }
         }
     }
 
@@ -257,5 +262,8 @@ class MainActivity : AppCompatActivity() {
     companion object {
         const val EXTRA_HOST = "host"
         const val EXTRA_PORT = "port"
+
+        /** 仅用于自动化测试：连上后直接进入书写页。 */
+        const val EXTRA_OPEN_BOARD = "openBoard"
     }
 }

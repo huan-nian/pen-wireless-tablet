@@ -26,9 +26,9 @@ class ClientSettings(context: Context) {
         get() = prefs.getBoolean(KEY_KEEP_SCREEN_ON, true)
         set(value) = prefs.edit().putBoolean(KEY_KEEP_SCREEN_ON, value).apply()
 
-    /** 书写区背景色，默认纯白。 */
+    /** 书写区背景色。默认暖白，比纯白柔和，长时间书写不刺眼。 */
     var canvasColor: Int
-        get() = prefs.getInt(KEY_CANVAS_COLOR, Color.WHITE)
+        get() = prefs.getInt(KEY_CANVAS_COLOR, DEFAULT_CANVAS_COLOR)
         set(value) = prefs.edit().putInt(KEY_CANVAS_COLOR, value).apply()
 
     /** 笔迹保留时长。存名字而不是序号，这样以后插入新选项也不会串位。 */
@@ -46,5 +46,8 @@ class ClientSettings(context: Context) {
         const val KEY_KEEP_SCREEN_ON = "keep_screen_on"
         const val KEY_CANVAS_COLOR = "canvas_color"
         const val KEY_INK_RETENTION = "ink_retention"
+
+        /** 与 colors.xml 里的 canvas_default 保持一致（暖白）。 */
+        val DEFAULT_CANVAS_COLOR = Color.parseColor("#F7F5F0")
     }
 }
