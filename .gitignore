@@ -75,3 +75,8 @@ coverage/
 # .acl-reports/ 是文件权限诊断脚本留下的报告与回滚脚本，只对本机有意义
 .acl-reports/
 .tmp-*
+
+# ---------- 发布产物 ----------
+# dist/ 由 scripts\package-release.cmd 生成，动辄几十 MB，不进仓库；
+# 发布时作为 GitHub Release 的附件单独上传。
+dist/

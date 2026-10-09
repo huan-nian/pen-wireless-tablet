@@ -51,7 +51,7 @@ Windows 笔输入（Windows Ink）注入到电脑上，Photoshop、OneNote、画
 ```ini
 AutoStart = 1                    # 启动即开始监听
 Port = 8888
-AllowedSender = 192.168.1.103    # 来源限制打开的平板地址
+AllowedSender = 192.168.1.23     # 来源限制打开的平板地址（示例）
 RestrictSender = 0
 MappingMode = Stretch
 DisplayIndex = 0
@@ -184,8 +184,7 @@ Android 只提供「笔身与屏幕法线夹角 + 倾斜方向」，Windows 要�
 - 平板 Android 8.0（API 26）及以上，与电脑在同一局域网。
 - Windows 防火墙需放行 UDP 8888 入站（端口可在接收端里改）。
 - Android 端构建需要 JDK 17 以上。若命令行 `java -version` 还是 Java 8，
-  把 `JAVA_HOME` 指向 Android Studio 自带的 JBR，例如：
-  `$env:JAVA_HOME = 'E:\Applications\Android Studio\jbr'`
+  把 `JAVA_HOME` 指向 Android Studio 自带的 JBR（即 `<Android Studio 安装目录>\jbr`）。
 
 ## 手工构建
 
@@ -201,6 +200,32 @@ cd PenClient
 .\gradlew.bat :app:assembleDebug      # 产物在 app\build\outputs\apk\debug\
 .\gradlew.bat :app:installDebug       # 直接装到已连接的平板
 ```
+
+## 打包与发布
+
+本地打一个可直接发布的包：
+
+```powershell
+scripts\package-release.cmd 0.1.0
+```
+
+产物在 `dist\`（已加入 .gitignore，不进仓库）：
+
+| 文件 | 体积 | 说明 |
+| --- | --- | --- |
+| `PenReceiver-<版本>-win-x64.zip` | 约 69 MB | **推荐**。自包含单文件，目标机不需要装 .NET |
+| `PenReceiver-<版本>-win-x64-lite.zip` | 约 6 MB | 需预装 .NET 8 运行时 |
+| `PenClient-<版本>-debug.apk` | 约 7 MB | 平板端，debug 签名 |
+
+推到 GitHub 后，`.github/workflows/release.yml` 会在推送 `v*` 标签时自动构建两端
+并创建 Release：
+
+```powershell
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+CI 里同样会先跑一遍自检（85 项断言），通过之后才打包。
 
 ## 应用图标
 

@@ -1,0 +1,152 @@
+# 发布时的打包脚本：推送以 v 开头的 tag 时，自动构建并创建 Release。
+#
+# 为什么需要它：接收端用了 WinRT/C# 投影，Android 端需要 JDK 与 Android SDK，
+# 本地手工打包容易漏步骤。标签一推就出包，Release 页面的附件也自动带上。
+#
+# 用法：
+#   git tag v0.1.0
+#   git push origin v0.1.0
+#
+# 说明：APK 用的是 debug 签名（与 scripts/package-release.cmd 一致），
+# 安装时会提示「未知来源」，这是 debug 签名的正常表现。
+# 若以后要做正式签名，把 keystore 放进仓库 Secrets 并在这里加一步签名即可。
+
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: '版本号（不带 v 前缀，例如 0.1.0）'
+        required: true
+        default: '0.1.0'
+
+permissions:
+  contents: write
+
+jobs:
+  # Windows 接收端不需要外部 SDK，最容易自动化
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装 .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: 计算版本号
+        shell: pwsh
+        run: |
+          $version = '${{ github.event.inputs.version }}'
+          if (-not $version) { $version = '${{ github.ref_name }}'.TrimStart('v') }
+          "VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          Write-Host "版本：$version"
+
+      - name: 自检（不注入输入，无需管理员权限）
+        run: dotnet run --project PenReceiver.SelfTest -c Release
+
+      - name: 发布自包含版（目标机无需 .NET）
+        run: >
+          dotnet publish PenReceiver/PenReceiver.csproj
+          -c Release -r win-x64 --self-contained true
+          -p:PublishSingleFile=true
+          -p:IncludeNativeLibrariesForSelfExtract=true
+          -p:DebugType=none -p:DebugSymbols=false
+          -o dist/PenReceiver-win-x64
+
+      - name: 发布框架依赖版（体积小）
+        run: >
+          dotnet publish PenReceiver/PenReceiver.csproj
+          -c Release -r win-x64 --self-contained false
+          -p:DebugType=none -p:DebugSymbols=false
+          -o dist/PenReceiver-win-x64-lite
+
+      - name: 打包接收端
+        shell: pwsh
+        run: |
+          Compress-Archive -Path 'dist/PenReceiver-win-x64/*'      -DestinationPath "dist/PenReceiver-$env:VERSION-win-x64.zip" -Force
+          Compress-Archive -Path 'dist/PenReceiver-win-x64-lite/*' -DestinationPath "dist/PenReceiver-$env:VERSION-win-x64-lite.zip" -Force
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: dist/*.zip
+
+  # Android 需要 JDK 与 Android SDK，放在 ubuntu runner 上更快
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装 JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: 安装 Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: 构建 APK
+        working-directory: PenClient
+        run: |
+          chmod +x gradlew
+          ./gradlew :app:assembleDebug --no-daemon
+
+      - name: 改名并上传
+        run: |
+          version='${{ github.event.inputs.version }}'
+          if [ -z "$version" ]; then version="${GITHUB_REF_NAME#v}"; fi
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+          mkdir -p dist
+          cp PenClient/app/build/outputs/apk/debug/app-debug.apk "dist/PenClient-$version-debug.apk"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android
+          path: dist/*.apk
+
+  # 等两个平台都构建完，一次性创建 Release
+  release:
+    needs: [windows, android]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: 整理附件
+        run: |
+          mkdir -p release
+          find artifacts -type f \( -name '*.zip' -o -name '*.apk' \) -exec cp {} release/ \;
+          ls -lh release/
+
+      - name: 创建 Release
+        uses: softprops/action-gh-release@v2
+        with:
+          # 手动触发时没有 tag，用版本号生成一个
+          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || format('v{0}', github.event.inputs.version) }}
+          name: 无线手写板 ${{ github.ref_type == 'tag' && github.ref_name || format('v{0}', github.event.inputs.version) }}
+          draft: false
+          prerelease: true
+          generate_release_notes: true
+          body: |
+            预览版。平板当无线手写板用，笔迹以 Windows Ink 注入电脑。
+
+            **下载哪个**
+            - `PenReceiver-*-win-x64.zip` —— 接收端，**推荐**。自包含，目标机不用装 .NET。
+            - `PenReceiver-*-win-x64-lite.zip` —— 同上但体积小得多，需要预装 .NET 8 运行时。
+            - `PenClient-*-debug.apk` —— 平板端。debug 签名，安装时请允许「未知来源」。
+
+            **怎么用**
+            1. 电脑上解压接收端，双击 `launch-receiver.cmd`，在 UAC 窗口点「是」。
+               首次运行请在防火墙提示里允许**专用网络**。
+            2. 平板装 APK，打开后点「扫描电脑」→「连接」→「开始书写」。
+
+            详细说明见仓库 README。
+          files: release/*
