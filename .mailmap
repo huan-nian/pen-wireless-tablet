@@ -1,0 +1,10 @@
+# 作者与邮箱的统一映射。
+#
+# 作用：git log / GitHub 会用这里的映射显示作者，避免把私人邮箱暴露在公开历史里。
+# 左边是提交里记录的原始身份，右边是希望对外显示的身份。
+#
+# 换成你自己的 noreply 邮箱：GitHub → Settings → Emails 勾选
+# "Keep my email addresses private" 后，页面会给出形如
+#   <数字ID>+<用户名>@users.noreply.github.com
+# 把下面两行的邮箱替换掉即可（改完提交一次；历史里的旧邮箱已在本仓库重写掉）。
+
