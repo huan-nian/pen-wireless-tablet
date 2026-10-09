@@ -182,17 +182,34 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          # 推送标签时 GitHub 会自动创建一个空 Release，此时再调用创建接口会冲突
-          # （实测报 "already_exists"）。所以先按标签把已有 Release 删掉，让这一步幂等。
           TAG="${{ github.ref_type == 'tag' && github.ref_name || format('v{0}', github.event.inputs.version) }}"
+          API="https://api.github.com/repos/${{ github.repository }}"
+          # --ssl-no-revoke 是给 Windows 上的 Git Bash 用的（证书吊销检查会失败），
+          # 在 Linux runner 上是良性参数。
+          CURL=(curl -sS --ssl-no-revoke
+                -H "Authorization: Bearer $GH_TOKEN"
+                -H 'Accept: application/vnd.github+json'
+                -H 'User-Agent: pen-release-cleanup')
           echo "目标标签：$TAG"
 
-          ID="$(gh api "repos/${{ github.repository }}/releases/tags/$TAG" --jq '.id' 2>/dev/null || true)"
-          if [ -n "$ID" ]; then
+          # 推送标签时 GitHub 会自动创建一个空 Release，此时再调创建接口会冲突。
+          # 这里用 curl 显式判断状态码，不用 gh：
+          # gh api 在资源不存在时以非零码退出，配合 set -e 会让整步失败
+          # （实测就是这样挂掉的）。
+          STATUS="$("${CURL[@]}" -o /tmp/rel.json -w '%{http_code}' "$API/releases/tags/$TAG" || true)"
+          echo "按标签查询状态码：$STATUS"
+
+          if [ "$STATUS" = "200" ]; then
+            ID="$(grep -o '"id":[0-9]*' /tmp/rel.json | head -n1 | cut -d: -f2)"
             echo "删除已存在的 Release id=$ID"
-            gh api -X DELETE "repos/${{ github.repository }}/releases/$ID"
+            DEL="$("${CURL[@]}" -o /dev/null -w '%{http_code}' -X DELETE "$API/releases/$ID" || true)"
+            echo "删除状态码：$DEL"
+            [ "$DEL" = "204" ] || { echo "删除未成功，终止"; exit 1; }
+          elif [ "$STATUS" = "404" ]; then
+            echo "该标签下没有 Release，跳过删除"
           else
-            echo "没有同标签的 Release，直接创建"
+            echo "意外的查询状态码，终止"
+            exit 1
           fi
 
       - name: 创建 Release
