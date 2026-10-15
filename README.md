@@ -280,21 +280,92 @@ cd PenClient
 并用 `apksigner` 复核证书主题里确实有你的署名——**密钥库弄错会直接让构建失败**，
 不会悄悄产出一个签错名的包。
 
+## Windows 安装包
+
+普通用户推荐用安装包，不用手动解压：
+
+```powershell
+scripts\build-installer.cmd 1.0.1
+```
+
+产出 `dist\PenWirelessTablet-Setup-<版本>.exe`（约 69 MB）。特点：
+
+- **单个文件**，双击即装，会创建开始菜单与桌面快捷方式；
+- **安装时不需要联网**，也**不需要预装 .NET**——载荷是 self-contained 发布产物
+  （已内含 .NET 8）压缩后嵌在安装器里；
+- 在「应用和功能」里注册卸载项，卸载时会一并清理快捷方式与注册表；
+- 自动检测已安装版本，已装过时按钮变为「更新」，可覆盖安装。
+
+> **为什么不做「检测到没有 .NET 就去下载安装」？**
+> 原本考虑过：安装器先探测 .NET 8，缺了就调用官方安装程序。但那样会有两个代价：
+> 一是用户必须联网，二是可能出现「运行时装了一半失败」的中间状态。
+> 直接把自包含程序内置，用户永远不可能因为缺环境而装不上——多出来的体积（约 60 MB）
+> 换掉了整类失败场景，更划算。
+
+安装器会在未提权时明确提示并可一键重新提权（接收端必须在提升的进程里才能注入笔输入）。
+
+## Windows 代码签名（Authenticode）
+
+**注意：这跟 Android 的 APK 签名完全是两回事**，不要混为一谈：
+
+| | Android APK | Windows EXE |
+| --- | --- | --- |
+| 签名机制 | APK 签名方案（v2） | Authenticode |
+| 凭据 | `signing\pen-release.keystore` | `signing\codesign.pfx` |
+| 作用 | 让系统认可「同一开发者的升级包」 | 让 Windows 显示发布者名称 |
+| 能否免费 | 能，自建 keystore 即可 | 只能是自签（有代价，见下） |
+
+### 生成自签证书（免费）
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\make-codesign-cert.ps1
+```
+
+会生成 `signing\codesign.pfx`（含私钥，签名用）与 `signing\codesign.cer`（公钥，随安装包发布）。
+两者都已在 `signing\.gitignore` 中排除。
+
+### 签名
+
+打包脚本会自动调用，也可单独运行：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\sign-windows.ps1
+```
+
+### 自签证书的两条硬限制（务必先了解）
+
+1. **无法消除 SmartScreen 拦截。**
+   用户首次运行仍会看到「Windows 已保护你的电脑」。
+   那个拦截基于证书声誉（是否由受信任 CA 签发、下载量多少），自签证书没有声誉。
+   只有购买 CA 签发的代码签名证书（DigiCert / Sectigo 等）才能真正消除。
+
+2. **用户必须先导入 `codesign.cer` 才会显示发布者。**
+   不导入的话，签名状态是「不受信任」，文件属性里看不到名字。
+   导入方法：双击 `codesign.cer` → 安装证书 → 本地计算机 →
+   放入「受信任的根证书颁发机构」。
+
+> 本项目自己的签名状态就是如此：签名数据已写入（`Get-AuthenticodeSignature`
+> 能读出 `CN=Huan Nian, O=pen-wireless-tablet`），但因为证书未进受信任存储，
+> 状态显示为 `UnknownError`。这是自签证书的正常表现，**不是没签上**。
+
 ## 打包与发布
 
 本地打一个可直接发布的包：
 
 ```powershell
-scripts\package-release.cmd 1.0.0
+scripts\package-release.cmd 1.0.1
 ```
 
 产物在 `dist\`（已加入 .gitignore，不进仓库）：
 
 | 文件 | 体积 | 说明 |
 | --- | --- | --- |
-| `PenReceiver-<版本>-win-x64.zip` | 约 69 MB | **推荐**。自包含单文件，目标机不需要装 .NET |
-| `PenReceiver-<版本>-win-x64-lite.zip` | 约 6 MB | 需预装 .NET 8 运行时 |
+| `PenWirelessTablet-Setup-<版本>.exe` | 约 69 MB | **推荐给普通用户**。单文件安装包，内置运行环境 |
+| `PenReceiver-<版本>-win-x64.zip` | 约 69 MB | 免安装绿色版（自包含，无需 .NET） |
+| `PenReceiver-<版本>-win-x64-lite.zip` | 约 6 MB | 框架依赖版，需预装 .NET 8 |
 | `PenClient-<版本>.apk` | 约 4.7 MB | 平板端，**正式签名版** |
+| `codesign.cer` | 1 KB | 自签证书公钥，**请随发布一起提供**，否则用户看不到发布者 |
+| `SHA256SUMS.txt` | — | 校验值，防下载损坏 |
 
 推到 GitHub 后，`.github/workflows/release.yml` 会在推送 `v*` 标签时自动构建并创建 Release：
 

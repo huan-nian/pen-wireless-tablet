@@ -72,10 +72,67 @@ jobs:
           Compress-Archive -Path 'dist/PenReceiver-win-x64/*'      -DestinationPath "dist/PenReceiver-$env:VERSION-win-x64.zip" -Force
           Compress-Archive -Path 'dist/PenReceiver-win-x64-lite/*' -DestinationPath "dist/PenReceiver-$env:VERSION-win-x64-lite.zip" -Force
 
+      # 安装包：把自己的载荷压缩后嵌进 PenInstaller，产出单个 setup.exe。
+      # 刻意不走 scripts\build-installer.cmd：那个脚本会重复发布一次接收端，
+      # 而这里已经发布过了，重复跑纯属浪费时间。
+      - name: 构建 Windows 安装包
+        shell: pwsh
+        run: |
+          # 1) 压缩载荷（就是上面那份自包含产物）
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $payload = 'PenInstaller/payload.zip'
+          if (Test-Path $payload) { Remove-Item $payload -Force }
+          [System.IO.Compression.ZipFile]::CreateFromDirectory(
+            (Resolve-Path 'dist/PenReceiver-win-x64').Path, (Join-Path $PWD $payload),
+            [System.IO.Compression.CompressionLevel]::Optimal, $false)
+          Write-Host "载荷 $((Get-Item $payload).Length) 字节"
+
+          # 2) 编译安装器为单文件
+          dotnet publish PenInstaller/PenInstaller.csproj `
+            -c Release -r win-x64 --self-contained false `
+            -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true `
+            -p:Version=$env:VERSION `
+            -o PenInstaller/publish
+
+          Copy-Item 'PenInstaller/publish/PenWirelessTablet-Setup.exe' `
+            "dist/PenWirelessTablet-Setup-$env:VERSION.exe" -Force
+
+      # 签名是可选的：仓库里没有证书（证书是发布者身份，不进仓库），
+      # 所以 CI 上默认跳过，只在配置了证书 Secret 时才签。
+      # 这样至少不会出现「CI 产出的包和本地签名包不一致」而不自知。
+      - name: Authenticode 签名（配置了证书才执行）
+        if: ${{ secrets.CODESIGN_PFX_BASE64 != '' }}
+        shell: pwsh
+        env:
+          CODESIGN_PFX_BASE64: ${{ secrets.CODESIGN_PFX_BASE64 }}
+          CODESIGN_PFX_PASSWORD: ${{ secrets.CODESIGN_PFX_PASSWORD }}
+        run: |
+          New-Item -ItemType Directory -Force -Path signing | Out-Null
+          [IO.File]::WriteAllBytes('signing/codesign.pfx', [Convert]::FromBase64String($env:CODESIGN_PFX_BASE64))
+          Set-Content 'signing/codesign.pass' -Value $env:CODESIGN_PFX_PASSWORD -Encoding ASCII -NoNewline
+          & scripts/sign-windows.ps1 -Version $env:VERSION
+
+      - name: 生成校验值
+        shell: pwsh
+        run: |
+          $files = @(
+            "dist/PenWirelessTablet-Setup-$env:VERSION.exe",
+            "dist/PenReceiver-$env:VERSION-win-x64.zip",
+            "dist/PenReceiver-$env:VERSION-win-x64-lite.zip"
+          )
+          $lines = foreach ($f in $files) {
+            if (Test-Path $f) { "$((Get-FileHash $f -Algorithm SHA256).Hash)  $(Split-Path $f -Leaf)" }
+          }
+          $lines | Set-Content 'dist/SHA256SUMS.txt' -Encoding ASCII
+          $lines | ForEach-Object { Write-Host $_ }
+
       - uses: actions/upload-artifact@v4
         with:
           name: windows
-          path: dist/*.zip
+          path: |
+            dist/*.zip
+            dist/*.exe
+            dist/SHA256SUMS.txt
 
   # ---------- Android APK ----------
   #

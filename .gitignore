@@ -85,3 +85,11 @@ dist/
 # 用于沙箱受限时把 GRADLE_USER_HOME 指到工作区内；正常情况下 Gradle 用
 # 用户级缓存（~/.gradle），这里留规则只是为了不让它被误提交。
 .gradle-home/
+
+# ---------- 安装器构建中间产物 ----------
+# 嵌入安装器的载荷（自包含接收端的压缩包，约 70 MB），由 scripts\build-installer.cmd 生成。
+# 它是构建产物而非源码，不进仓库。
+PenInstaller/payload.zip
+PenInstaller/publish/
+PenInstaller/bin/
+PenInstaller/obj/

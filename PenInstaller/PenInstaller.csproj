@@ -1,0 +1,59 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    无线手写板 安装器。
+
+    设计要点（决定了这个项目为什么长这样）：
+
+    1) 目标是 net8.0-windows 而不是 Native AOT。
+       Native AOT 能做成“无需任何运行时”的原生 exe，但它需要 MSVC 链接器；
+       本机没有装。而 net8.0-windows 的 WinForms 应用**不需要“桌面运行时”完整包**，
+       只需要 .NET 8 运行时——Windows 10 1809 及以上的机器普遍已自带，
+       Windows 11 更是默认预装。真要缺，装一次运行时即可，成本远低于引入 MSVC 工具链。
+
+    2) 内置“自包含”载荷，所以安装时**不需要联网**。
+       载荷是 PenReceiver 的 self-contained 单文件发布产物（已内含 .NET 8），
+       压缩后约 60-70 MB 嵌进安装器。这样用户永远不可能遇到
+       “装到一半发现缺运行时、下载又失败”的中间状态。
+
+    3) 需要管理员权限：要写 Program Files 与注册表卸载项，
+       且接收端本身也必须在提升后的进程里运行（Windows 笔注入接口的要求）。
+  -->
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>PenWirelessTablet-Setup</AssemblyName>
+    <RootNamespace>PenInstaller</RootNamespace>
+    <!-- 与接收端保持同一版本号，方便用户核对 -->
+    <Version>1.0.1</Version>
+    <Product>无线手写板</Product>
+    <AssemblyTitle>无线手写板 安装程序</AssemblyTitle>
+    <Company>Huan Nian</Company>
+    <Copyright>Copyright (c) 2026 Huan Nian</Copyright>
+    <!-- 安装器自己要嵌入几十 MB 载荷，不需要再被裁剪/单文件化 -->
+    <DebugType>none</DebugType>
+    <ApplicationIcon>..\assets\app.ico</ApplicationIcon>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+  </PropertyGroup>
+
+  <!--
+    载荷以嵌入资源形式参与编译。
+    只有 payload.zip 存在时才加入，这样在没有先跑打包脚本的情况下
+    仍然能编译安装器（方便改界面时快速试跑，避免每次都等压缩）。
+  -->
+  <ItemGroup Condition="Exists('payload.zip')">
+    <EmbeddedResource Include="payload.zip" LogicalName="payload.zip" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- 卸载器与安装器共用同一套 UI 与外框，做成同一个程序的两个模式，
+         避免再多一个项目、也避免两份需要同步的代码 -->
+    <Compile Update="**\*.cs" />
+  </ItemGroup>
+
+</Project>

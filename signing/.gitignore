@@ -12,3 +12,11 @@
 *.jks
 keystore.properties
 *.pepk
+
+# Windows Authenticode 自签证书。
+# pfx 含私钥（用于给 exe 签名），pass 是它的口令，两者都等同于签名权。
+# cer 是公钥，**需要随安装包一起发布**，所以它由构建脚本复制到 dist\ 后再上传，
+# 原件同样不进仓库以免与 pfx 混放。
+codesign.pfx
+codesign.pass
+codesign.cer
