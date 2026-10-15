@@ -234,11 +234,18 @@ internal sealed class InstallForm : Form
         }
 
         SetBusy(true);
+
+        // 覆盖安装的关键前一步：接收端常驻托盘，旧进程还在跑时它的 exe 文件被锁定，
+        // 直接解压覆盖会失败。必须在解压之前让它退出。
+        SetHint("正在检查并关闭旧版本的接收端…", Normal);
+        var hadRunning = InstallerCore.StopRunningReceiver();
+
         var progress = new Progress<(long done, long total)>(p =>
         {
             var percent = p.total <= 0 ? 0 : (int)(p.done * 100 / p.total);
             _progress.Value = Math.Clamp(percent, 0, 100);
-            SetHint($"正在安装… {percent}%（{p.done / 1024 / 1024} / {p.total / 1024 / 1024} MB）", Normal);
+            var prefix = hadRunning ? "已关闭旧版本，正在安装" : "正在安装";
+            SetHint($"{prefix}… {percent}%（{p.done / 1024 / 1024} / {p.total / 1024 / 1024} MB）", Normal);
         });
 
         // 解压放到后台线程，否则界面会卡住、进度条也不会动
@@ -269,10 +276,15 @@ internal sealed class InstallForm : Form
 
             // 把安装器自己复制进安装目录，卸载时用它（此时它已经是 /uninstall 模式）。
             // 不放进 Program Files 的话，用户删掉下载的安装包后就无法卸载了。
+            //
+            // 但要先判断源和目标是不是同一个文件：如果用户就是从安装目录里那个副本
+            // 启动的安装器（例如想用旧版本的卸载器重新安装），File.Copy 会因为
+            // 「源文件正被自己占用」而失败，进而让整个安装卡在最后一步。
             var self = Environment.ProcessPath;
-            if (!string.IsNullOrEmpty(self))
+            var uninstallerCopy = Path.Combine(dir, "PenWirelessTablet-Setup.exe");
+            if (!string.IsNullOrEmpty(self) && !IsSameFile(self, uninstallerCopy))
             {
-                File.Copy(self, Path.Combine(dir, "PenWirelessTablet-Setup.exe"), overwrite: true);
+                File.Copy(self, uninstallerCopy, overwrite: true);
             }
 
             if (_startMenuShortcut.Checked)
@@ -354,5 +366,26 @@ internal sealed class InstallForm : Form
         _desktopShortcut.Enabled = !busy;
         _startMenuShortcut.Enabled = !busy;
         Cursor = busy ? Cursors.WaitCursor : Cursors.Default;
+    }
+
+    /// <summary>
+    /// 判断两个路径是否指向同一个文件。
+    ///
+    /// 不能用简单的字符串比较：同一个文件可以用不同的相对/绝对路径、
+    /// 不同的短名（8.3）或大小写形式表示。这里统一解析成完整绝对路径再比。
+    /// </summary>
+    private static bool IsSameFile(string a, string b)
+    {
+        try
+        {
+            return string.Equals(
+                Path.GetFullPath(a).TrimEnd(Path.DirectorySeparatorChar),
+                Path.GetFullPath(b).TrimEnd(Path.DirectorySeparatorChar),
+                StringComparison.OrdinalIgnoreCase);
+        }
+        catch
+        {
+            return false;
+        }
     }
 }

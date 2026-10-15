@@ -37,6 +37,10 @@ if not exist "signing\keystore.properties" goto nosigning
 
 if not exist "dist" mkdir "dist"
 
+rem 清掉上一次遗留的安装包：脚本只覆盖同名文件，换了版本号之后旧安装包会一直留着，
+rem 上传 Release 时很容易误传上一个版本（dist 里同时躺着两个 setup.exe）。
+if exist "dist\PenWirelessTablet-Setup-*.exe" del /f /q "dist\PenWirelessTablet-Setup-*.exe"
+
 rem ---------- 1. Windows 安装包（含自包含程序与 Authenticode 签名） ----------
 echo [1/4] 构建 Windows 安装包...
 call "scripts\build-installer.cmd" %VERSION%

@@ -1,5 +1,6 @@
 using System;
 using System.Drawing;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Windows.Forms;
@@ -32,6 +33,16 @@ internal static class Program
     /// </summary>
     private static readonly int RestoreMessage = RegisterWindowMessage("PenReceiver.RestoreWindow");
 
+    /// <summary>
+    /// 「请退出」的广播消息 id，由安装程序在覆盖安装前发出。
+    ///
+    /// 为什么需要它：接收端常驻托盘（关窗口只是最小化），所以覆盖安装时旧进程
+    /// 几乎总是还在运行，而正在运行的 exe 文件被系统锁定、无法被覆盖写入。
+    /// 让旧实例自己退出，比安装器直接 TerminateProcess 干净：
+    /// 走正常的 FormClosing 路径才会断开 UDP 监听、把笔尖抬起、保存设置。
+    /// </summary>
+    internal static readonly int QuitMessage = RegisterWindowMessage("PenReceiver.QuitForUpdate");
+
     [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     private static extern int RegisterWindowMessage(string message);
 
@@ -44,8 +55,14 @@ internal static class Program
         using var mutex = new Mutex(initiallyOwned: true, InstanceMutexName, out var isFirstInstance);
         if (!isFirstInstance)
         {
-            // 已经有实例在跑：广播一条消息让它自己跳到前面，本次直接退出
-            PostMessage(HwndBroadcast, RestoreMessage, IntPtr.Zero, IntPtr.Zero);
+            // 已经有实例在跑：
+            //   普通重复启动 → 广播让它跳到前面；
+            //   安装器要求退出（带 --quit-for-update）→ 广播退出请求，等它自己走干净。
+            var quitRequested = Environment.GetCommandLineArgs()
+                .Any(a => a.Equals("--quit-for-update", StringComparison.OrdinalIgnoreCase));
+
+            PostMessage(HwndBroadcast, quitRequested ? QuitMessage : RestoreMessage,
+                IntPtr.Zero, IntPtr.Zero);
             return 0;
         }
 
@@ -80,7 +97,7 @@ internal static class Program
 
         using (injector)
         {
-            Application.Run(new PenReceiverForm(injector, RestoreMessage));
+            Application.Run(new PenReceiverForm(injector, RestoreMessage, QuitMessage));
         }
         return 0;
     }

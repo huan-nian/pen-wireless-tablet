@@ -118,6 +118,10 @@ internal sealed class UninstallForm : Form
         // 给上一个进程一点时间退出，否则它的 exe 文件还被占用
         Thread.Sleep(1200);
 
+        // 先关掉正在运行的接收端：它常驻托盘，还在跑时程序目录根本删不掉
+        // （现象是提示「卸载完成」但文件都还在）。
+        InstallerCore.StopRunningReceiver();
+
         InstallerCore.DeleteShortcuts();
         InstallerCore.RemoveUninstallRegistry();
         InstallerCore.DeleteDirectory(installDir);
@@ -144,6 +148,9 @@ internal sealed class UninstallForm : Form
 
     private void PerformCleanup()
     {
+        // 原地卸载（自复制失败时的退化路径）也要先关掉接收端
+        InstallerCore.StopRunningReceiver();
+
         InstallerCore.DeleteShortcuts();
         InstallerCore.RemoveUninstallRegistry();
         InstallerCore.DeleteDirectory(_installDir);

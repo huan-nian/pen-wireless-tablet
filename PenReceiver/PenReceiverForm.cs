@@ -57,6 +57,15 @@ public sealed class PenReceiverForm : Form
     /// <summary>重复启动时广播的唤醒消息 id，由 Program 注册后传入。</summary>
     private readonly int _restoreMessage;
 
+    /// <summary>
+    /// 安装程序发来的「请退出以便覆盖安装」广播消息 id。
+    ///
+    /// 为什么需要：接收端常驻托盘，覆盖安装时旧进程几乎总是还在跑，
+    /// 而正在运行的 exe 文件被系统锁定、无法被新版本覆盖写入。
+    /// 由旧实例自己退出，比安装器强杀更安全——详见 WndProc 里的处理。
+    /// </summary>
+    private readonly int _quitMessage;
+
     private bool _injectionEnabled = true;
     private int _logCount;
 
@@ -68,10 +77,11 @@ public sealed class PenReceiverForm : Form
     private static readonly Color WarnOrange = Color.FromArgb(178, 106, 0);
     private static readonly Color ErrorRed = Color.FromArgb(197, 34, 31);
 
-    public PenReceiverForm(PenInjector injector, int restoreMessage)
+    public PenReceiverForm(PenInjector injector, int restoreMessage, int quitMessage)
     {
         _injector = injector;
         _restoreMessage = restoreMessage;
+        _quitMessage = quitMessage;
         _session = new PenSession(injector);
         _session.StatusChanged += OnStatusChanged;
 
@@ -800,8 +810,13 @@ public sealed class PenReceiverForm : Form
 
     protected override void OnFormClosing(FormClosingEventArgs e)
     {
-        // 点右上角关闭只缩到托盘：手写板场景下用户只是想把它挪开，不是想退出
-        if (e.CloseReason == CloseReason.UserClosing)
+        // 点右上角关闭只缩到托盘：手写板场景下用户只是想把它挪开，不是想退出。
+        //
+        // 但「因覆盖安装而退出」必须真的关掉：注意 Close() 触发的正是
+        // CloseReason.UserClosing，如果不排除这种情况，安装程序发来的退出请求
+        // 会被这里拦成一次“最小化到托盘”，旧进程继续占着 exe 文件，
+        // 覆盖安装依然会失败。
+        if (e.CloseReason == CloseReason.UserClosing && !_quittingForUpdate)
         {
             e.Cancel = true;
             HideToTray();
@@ -814,6 +829,8 @@ public sealed class PenReceiverForm : Form
     /// 处理「重复启动」广播：把窗口从托盘/最小化状态唤到前台。
     /// 这样用户重复双击启动脚本时，看到的是已经打开的窗口，而不是一个需要
     /// 手动关掉的「已在运行」提示框。
+    ///
+    /// 同时处理安装程序发来的「请退出」广播，见下面 _quitMessage 的说明。
     /// </summary>
     protected override void WndProc(ref Message m)
     {
@@ -822,8 +839,25 @@ public sealed class PenReceiverForm : Form
             RestoreFromTray();
             return;
         }
+
+        if (_quitMessage != 0 && m.Msg == _quitMessage)
+        {
+            // 覆盖安装前的退出请求。
+            //
+            // 走 Close() 而不是让安装器 TerminateProcess：
+            // 正常关闭路径会经由 FormClosing 断开 UDP 监听、把笔尖抬起、
+            // 保存设置；强杀则会留下一个「笔还按着」的状态，用户下次落笔时
+            // 电脑上会从上次的位置拖出一条意外的线。
+            _quittingForUpdate = true;
+            Close();
+            return;
+        }
+
         base.WndProc(ref m);
     }
+
+    /// <summary>是否因覆盖安装而退出（用于跳过「最小化到托盘」的拦截）。</summary>
+    private bool _quittingForUpdate;
 
     protected override void Dispose(bool disposing)
     {

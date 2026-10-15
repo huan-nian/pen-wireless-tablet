@@ -29,7 +29,7 @@
     <AssemblyName>PenWirelessTablet-Setup</AssemblyName>
     <RootNamespace>PenInstaller</RootNamespace>
     <!-- 与接收端保持同一版本号，方便用户核对 -->
-    <Version>1.0.1</Version>
+    <Version>1.0.2</Version>
     <Product>无线手写板</Product>
     <AssemblyTitle>无线手写板 安装程序</AssemblyTitle>
     <Company>Huan Nian</Company>

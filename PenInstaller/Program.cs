@@ -201,6 +201,67 @@ internal static class InstallerCore
         }
     }
 
+    /// <summary>
+    /// 让正在运行的接收端退出，以便覆盖安装。
+    ///
+    /// 为什么必须有这一步：接收端常驻托盘（点关闭只是最小化），所以覆盖安装时
+    /// 旧进程几乎总是还在运行，而**正在运行的 exe 文件被系统锁定、无法被覆盖写入**。
+    /// 之前没有这一步，覆盖安装会在解压到 PenReceiver.exe 时抛 IOException，
+    /// 结果只给用户一句含糊的「安装未完全成功」，而且目录已经被写了一半。
+    ///
+    /// 顺序：先请求优雅退出（走正常关闭路径，会断开 UDP、把笔尖抬起、保存设置），
+    /// 超时后才强杀。强杀会留下「笔还按着」的状态，所以只作为兜底。
+    /// </summary>
+    /// <returns>退出前是否有实例在运行。</returns>
+    internal static bool StopRunningReceiver(int waitMs = 8000)
+    {
+        if (Process.GetProcessesByName("PenReceiver").Length == 0) return false;
+
+        // 先广播「请退出」。接收端收到后走 Close()，而不是被强杀。
+        var quitMessage = NativeMethods.RegisterWindowMessage("PenReceiver.QuitForUpdate");
+        if (quitMessage != 0)
+        {
+            NativeMethods.PostMessage(NativeMethods.HwndBroadcast, quitMessage, IntPtr.Zero, IntPtr.Zero);
+        }
+
+        var deadline = Environment.TickCount64 + waitMs;
+        while (Environment.TickCount64 < deadline)
+        {
+            if (Process.GetProcessesByName("PenReceiver").Length == 0) return true;
+            Thread.Sleep(200);
+        }
+
+        // 超时：可能旧版本还不认识这条广播消息（例如从更早的版本升级上来），
+        // 或者窗口线程卡住了。这时只能强杀，否则用户根本无法升级。
+        foreach (var process in Process.GetProcessesByName("PenReceiver"))
+        {
+            try
+            {
+                process.Kill(entireProcessTree: true);
+                process.WaitForExit(5000);
+            }
+            catch
+            {
+                // 杀不掉就继续，让后面的解压抛错并给出明确提示
+            }
+        }
+
+        Thread.Sleep(500); // 等文件句柄真正释放
+        return true;
+    }
+
+    /// <summary>覆盖安装前需要的一点点 Win32 调用。</summary>
+    private static class NativeMethods
+    {
+        internal static readonly IntPtr HwndBroadcast = new(0xFFFF);
+
+        [System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode, SetLastError = true)]
+        internal static extern int RegisterWindowMessage(string message);
+
+        [System.Runtime.InteropServices.DllImport("user32.dll", SetLastError = true)]
+        internal static extern bool PostMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
+    }
+
     /// <summary>创建或更新“应用和功能”里的卸载项。</summary>
     internal static void WriteUninstallRegistry(string installDir, string version, long estimatedSizeKb)
     {
