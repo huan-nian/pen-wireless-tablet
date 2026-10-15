@@ -13,16 +13,25 @@
 
 name: release
 
-on:
+# ⚠️ 'on' 必须加引号。
+#
+# YAML 1.1 把裸写的 on/off/yes/no 当作**布尔值**，于是 `on:` 会被解析成键 `true:`。
+# 虽然 GitHub Actions 的解析器对裸 on 通常能容错（这个工作流此前一直接触发正常），
+# 但一旦被当成布尔键，触发器就会失效——表现为：
+#   · 侧栏里的工作流名显示成文件路径而不是 "release"
+#   · 运行记录里有 0 个 job、耗时 0 秒（解析阶段就失败了）
+#   · 不再只响应 v* 标签，而是任何 push 都创建一个失败运行
+# 加引号就能从根本上避免这个歧义，代价为零。
+'on':
   push:
     tags:
       - 'v*'
   workflow_dispatch:
     inputs:
       version:
-        description: '版本号（不带 v 前缀，例如 0.1.0）'
+        description: '版本号（不带 v 前缀，例如 1.0.2）'
         required: true
-        default: '0.1.0'
+        default: '1.0.2'
 
 permissions:
   contents: write
