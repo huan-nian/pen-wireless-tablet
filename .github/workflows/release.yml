@@ -23,15 +23,10 @@
 
 name: release
 
-# ⚠️ 'on' 必须加引号。
-#
-# YAML 1.1 把裸写的 on/off/yes/no 当作**布尔值**，于是 `on:` 会被解析成键 `true:`。
-# 虽然 GitHub Actions 的解析器对裸 on 通常能容错（这个工作流此前一直接触发正常），
-# 但一旦被当成布尔键，触发器就会失效——表现为：
-#   · 侧栏里的工作流名显示成文件路径而不是 "release"
-#   · 运行记录里有 0 个 job、耗时 0 秒（解析阶段就失败了）
-#   · 不再只响应 v* 标签，而是任何 push 都创建一个失败运行
-# 加引号就能从根本上避免这个歧义，代价为零。
+# 'on' 加引号是习惯而非必需：GitHub Actions 对裸写的 on 能正常解析。
+# 注意不要把「工作流解析失败」归因到这里——本项目真实踩到的原因是
+# if 里引用了 secrets（详见下面 Authenticode 签名步骤的注释），
+# 当时误判成 on 的问题，浪费了一轮排查。
 'on':
   push:
     tags:
@@ -322,33 +317,55 @@ jobs:
           set -euo pipefail
           TAG="${{ github.ref_type == 'tag' && github.ref_name || format('v{0}', github.event.inputs.version) }}"
           API="https://api.github.com/repos/${{ github.repository }}"
-          # --ssl-no-revoke 是给 Windows 上的 Git Bash 用的（证书吊销检查会失败），
-          # 在 Linux runner 上是良性参数。
-          CURL=(curl -sS --ssl-no-revoke
-                -H "Authorization: Bearer $GH_TOKEN"
-                -H 'Accept: application/vnd.github+json'
-                -H 'User-Agent: pen-release-cleanup')
           echo "目标标签：$TAG"
 
-          # 推送标签时 GitHub 会自动创建一个空 Release，此时再调创建接口会冲突。
-          # 这里用 curl 显式判断状态码，不用 gh：
-          # gh api 在资源不存在时以非零码退出，配合 set -e 会让整步失败
-          # （实测就是这样挂掉的）。
-          STATUS="$("${CURL[@]}" -o /tmp/rel.json -w '%{http_code}' "$API/releases/tags/$TAG" || true)"
-          echo "按标签查询状态码：$STATUS"
+          # 推送标签时 GitHub 会**自动创建一个空 Release**，此时再调创建接口就会冲突
+          # （报 already_exists）。所以创建前必须把这个标签下的 Release 清干净。
+          #
+          # ⚠️ 必须删「所有」同标签的 Release，不能只删一个：
+          # 实测同标签下会同时存在两个——我方创建的那个（带附件）与 GitHub 因推送
+          # 标签自动创建的空 Release。只删一个的话剩下的那个会让创建步骤失败，
+          # 整个 release job 挂掉，最后反而是带附件的那个 Release 与标签脱钩。
+          #
+          # 另外注意：标签下的 Release 有「关联」与「脱钩」两种状态。
+          # /releases/tags/<tag> 只能查到关联的那个，脱钩的需要列全部再筛。
+          # 这里统一用「列出全部 + 按 tag_name 筛」的办法，两种情况都能覆盖。
+          for round in 1 2 3 4; do
+            curl -sS -X GET \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H 'Accept: application/vnd.github+json' \
+              -H 'User-Agent: pen-release-cleanup' \
+              "$API/releases?per_page=100" -o /tmp/all-releases.json
 
-          if [ "$STATUS" = "200" ]; then
-            ID="$(grep -o '"id":[0-9]*' /tmp/rel.json | head -n1 | cut -d: -f2)"
-            echo "删除已存在的 Release id=$ID"
-            DEL="$("${CURL[@]}" -o /dev/null -w '%{http_code}' -X DELETE "$API/releases/$ID" || true)"
-            echo "删除状态码：$DEL"
-            [ "$DEL" = "204" ] || { echo "删除未成功，终止"; exit 1; }
-          elif [ "$STATUS" = "404" ]; then
-            echo "该标签下没有 Release，跳过删除"
-          else
-            echo "意外的查询状态码，终止"
-            exit 1
-          fi
+            # 用 python3 解析，避免依赖 jq 是否预装
+            IDS="$(TAG="$TAG" python3 -c '
+import json, os
+tag = os.environ["TAG"]
+try:
+    data = json.load(open("/tmp/all-releases.json"))
+except Exception:
+    print(""); raise SystemExit
+print(" ".join(str(r["id"]) for r in data if r.get("tag_name") == tag))
+')"
+
+            if [ -z "$IDS" ]; then
+              echo "第 $round 轮：该标签下已无 Release"
+              break
+            fi
+
+            for id in $IDS; do
+              echo "第 $round 轮：删除同标签 Release id=$id"
+              curl -sS -X DELETE \
+                -H "Authorization: Bearer $GH_TOKEN" \
+                -H 'Accept: application/vnd.github+json' \
+                -H 'User-Agent: pen-release-cleanup' \
+                "$API/releases/$id" -o /dev/null || true
+            done
+          done
+
+          # 给 GitHub 一点时间落库，否则紧接着的创建仍可能撞上尚在缓存里的记录
+          sleep 5
+          echo "清理完成，准备创建新的 Release"
 
       - name: 创建 Release
         uses: softprops/action-gh-release@v2
