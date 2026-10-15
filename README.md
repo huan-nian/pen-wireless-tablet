@@ -201,12 +201,85 @@ cd PenClient
 .\gradlew.bat :app:installDebug       # 直接装到已连接的平板
 ```
 
+## 正式签名
+
+Android 的正式版必须用**你自己的密钥库**签名，这样后续版本才能覆盖升级
+（签名不一致时系统会拒绝安装）。
+
+> **密钥库就是发布者身份**：谁拿到它，谁就能以本项目的名义发版；
+> 而它一旦丢失，已发布的版本就再也无法升级——只能换包名重发，等于换了个应用。
+> 所以它**不进仓库**，请单独离线备份。
+
+### 生成密钥库（只需一次）
+
+```powershell
+keytool -genkeypair `
+  -keystore signing\pen-release.keystore `
+  -alias pen-release `
+  -keyalg RSA -keysize 2048 -validity 10000 `
+  -storepass "你的口令" -keypass "你的口令" `
+  -dname "CN=你的名字, O=pen-wireless-tablet, OU=Android, C=CN"
+```
+
+`-validity 10000` 约 27 年。Android 要求证书有效期覆盖到应用的最后一次更新，
+别用默认的 90 天。
+
+再写 `signing\keystore.properties`：
+
+```properties
+storeFile=../../signing/pen-release.keystore
+storePassword=你的口令
+keyAlias=pen-release
+keyPassword=你的口令
+```
+
+> `storeFile` 是**相对 `PenClient/app/` 模块目录**解析的，所以 `../../signing/`
+> 指向仓库根。`signing/.gitignore` 已排除这两类文件。
+>
+> 若曾误提交过密钥库，必须 `git rm --cached` 移出索引——只加忽略规则
+> 对已被跟踪的文件无效。
+
+### 构建与校验
+
+```powershell
+cd PenClient
+.\gradlew.bat :app:assembleRelease     # 产物 app\build\outputs\apk\release\
+```
+
+```powershell
+# 校验签名（build-tools 版本换成你本机的）
+& "$env:ANDROID_HOME\build-tools\36.1.0\apksigner.bat" verify --print-certs --verbose `
+  app\build\outputs\apk\release\app-release.apk
+```
+
+应看到 `Verifies`、`Number of signers: 1`，以及
+`certificate DN: CN=..., O=pen-wireless-tablet`。
+
+> 本项目 `minSdk = 26`，产出的是 **v2 方案签名**。AGP 9 在这个配置下不生成
+> v1（JAR）签名，`enableV1Signing = true` 也不改变结果——实测连 debug 包同样没有 v1。
+> Android 7.0 起就用 v2 校验，因此对 `minSdk 26` 覆盖的设备没有影响。
+
+### CI 上的签名
+
+密钥库不进仓库，CI 由 GitHub Secrets 注入。在仓库
+**Settings → Secrets and variables → Actions** 添加：
+
+| Secret | 内容 | 获取方式 |
+| --- | --- | --- |
+| `KEYSTORE_BASE64` | 密钥库文件的 base64 | `[Convert]::ToBase64String([IO.File]::ReadAllBytes("signing\pen-release.keystore"))` |
+| `KEYSTORE_PASSWORD` | 密钥库口令 | 生成时设的 |
+| `KEYSTORE_ALIAS` | 密钥别名 | 例如 `pen-release` |
+
+工作流会从 base64 还原密钥库、写入 `keystore.properties`，再构建 release 包，
+并用 `apksigner` 复核证书主题里确实有你的署名——**密钥库弄错会直接让构建失败**，
+不会悄悄产出一个签错名的包。
+
 ## 打包与发布
 
 本地打一个可直接发布的包：
 
 ```powershell
-scripts\package-release.cmd 0.1.0
+scripts\package-release.cmd 1.0.0
 ```
 
 产物在 `dist\`（已加入 .gitignore，不进仓库）：
@@ -215,17 +288,24 @@ scripts\package-release.cmd 0.1.0
 | --- | --- | --- |
 | `PenReceiver-<版本>-win-x64.zip` | 约 69 MB | **推荐**。自包含单文件，目标机不需要装 .NET |
 | `PenReceiver-<版本>-win-x64-lite.zip` | 约 6 MB | 需预装 .NET 8 运行时 |
-| `PenClient-<版本>-debug.apk` | 约 7 MB | 平板端，debug 签名 |
+| `PenClient-<版本>.apk` | 约 4.7 MB | 平板端，**正式签名版** |
 
-推到 GitHub 后，`.github/workflows/release.yml` 会在推送 `v*` 标签时自动构建两端
-并创建 Release：
+推到 GitHub 后，`.github/workflows/release.yml` 会在推送 `v*` 标签时自动构建并创建 Release：
 
 ```powershell
-git tag v0.1.0
-git push origin v0.1.0
+git tag v1.0.0
+git push origin v1.0.0
 ```
 
-CI 里同样会先跑一遍自检（85 项断言），通过之后才打包。
+CI 里会先跑一遍自检（85 项断言）、再校验 APK 签名，都通过才打包发布。
+
+脚本会先检查签名材料是否齐备，缺了就报错中止，不会拿 debug 签名凑合——
+那会产出一个「看起来是正式版、装上去却是调试签名」的包，以后无法用正式密钥升级。
+
+### 调试版与正式版并存
+
+debug 构建的包名是 `com.HuanNian.penclient.debug`，与正式版
+`com.HuanNian.penclient` 不同，两者可同时安装在一台设备上，方便对比排查。
 
 ## 应用图标
 

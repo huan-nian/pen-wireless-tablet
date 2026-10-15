@@ -80,3 +80,8 @@ coverage/
 # dist/ 由 scripts\package-release.cmd 生成，动辄几十 MB，不进仓库；
 # 发布时作为 GitHub Release 的附件单独上传。
 dist/
+
+# ---------- Gradle 本地缓存 ----------
+# 用于沙箱受限时把 GRADLE_USER_HOME 指到工作区内；正常情况下 Gradle 用
+# 用户级缓存（~/.gradle），这里留规则只是为了不让它被误提交。
+.gradle-home/

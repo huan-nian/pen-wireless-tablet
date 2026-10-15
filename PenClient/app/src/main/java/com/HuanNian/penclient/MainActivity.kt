@@ -1,4 +1,4 @@
-package com.example.penclient
+package com.HuanNian.penclient
 
 import android.annotation.SuppressLint
 import android.content.Intent
@@ -10,7 +10,7 @@ import android.view.View
 import android.view.WindowManager
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
-import com.example.penclient.databinding.ActivityMainBinding
+import com.HuanNian.penclient.databinding.ActivityMainBinding
 import java.util.Locale
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
@@ -47,7 +47,7 @@ class MainActivity : AppCompatActivity() {
         refreshConnectionUi()
 
         // 允许通过 adb / 其它应用带上地址直接启动，方便自动化验证：
-        //   adb shell am start -n com.example.penclient/.MainActivity \
+        //   adb shell am start -n com.HuanNian.penclient/.MainActivity \
         //       --es host 192.168.1.5 --ez openBoard true
         // openBoard 只是给自动化测试用的钩子，正常使用不会带这个参数。
         intent?.getStringExtra(EXTRA_HOST)?.let { host ->

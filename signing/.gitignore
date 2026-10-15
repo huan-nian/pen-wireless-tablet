@@ -1,0 +1,14 @@
+# 签名材料一律不进仓库。
+#
+# 密钥库（keystore）是发布者身份：谁拿到它，谁就能以本项目官方名义发布 APK；
+# 而一旦它丢失，已发布的版本就再也无法升级（只能换包名重发，等于换了个应用）。
+#
+# 注意：.gitignore 里的规则只对**尚未被跟踪**的文件生效。
+# 如果之前误把密钥库提交过，必须用 git rm --cached 移出索引，仅加忽略规则是不够的。
+#
+# CI 上由 GitHub Secrets 注入：KEYSTORE_BASE64 / KEYSTORE_PASSWORD
+# 见 .github/workflows/release.yml。
+*.keystore
+*.jks
+keystore.properties
+*.pepk

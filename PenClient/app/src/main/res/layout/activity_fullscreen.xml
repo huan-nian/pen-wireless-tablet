@@ -118,7 +118,7 @@
         android:layout_weight="1"
         android:orientation="vertical">
 
-        <com.example.penclient.PenCanvasView
+        <com.HuanNian.penclient.PenCanvasView
             android:id="@+id/canvas"
             android:layout_width="match_parent"
             android:layout_height="0dp"

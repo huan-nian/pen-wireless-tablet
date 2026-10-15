@@ -139,6 +139,29 @@ jobs:
           echo "--- 已安装的构建工具 ---"
           ls -1 "$SDK/build-tools" 2>/dev/null || true
 
+      - name: 注入签名密钥库
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        run: |
+          set -euo pipefail
+          # 密钥库不进仓库（它是发布者身份），CI 上由 Secret 以 base64 注入。
+          # 缺失时直接失败，避免悄悄产出一个未签名的包冒充正式版。
+          if [ -z "${KEYSTORE_BASE64:-}" ]; then
+            echo "缺少 Secret：KEYSTORE_BASE64。请先按 README「正式签名」一节配置。" >&2
+            exit 1
+          fi
+          mkdir -p signing
+          echo "$KEYSTORE_BASE64" | base64 -d > signing/pen-release.keystore
+          # storeFile 相对 app 模块目录解析，所以指向仓库根的 signing/
+          cat > signing/keystore.properties <<EOF
+          storeFile=../../signing/pen-release.keystore
+          storePassword=${{ secrets.KEYSTORE_PASSWORD }}
+          keyAlias=${{ secrets.KEYSTORE_ALIAS }}
+          keyPassword=${{ secrets.KEYSTORE_PASSWORD }}
+          EOF
+          echo "已写入 signing/keystore.properties（内容不打印）"
+          ls -l signing/
+
       - name: 构建 APK
         working-directory: PenClient
         run: |
@@ -146,7 +169,21 @@ jobs:
           # 同时打开 AGP 的按需下载，兜住 platforms/build-tools 版本差异
           echo "android.builder.sdkDownload=true" >> gradle.properties
           chmod +x gradlew
-          ./gradlew :app:assembleDebug --no-daemon --stacktrace
+          # 构建正式签名版（release），不是 debug 版
+          ./gradlew :app:assembleRelease --no-daemon --stacktrace
+
+      - name: 校验签名
+        run: |
+          set -euo pipefail
+          APK="PenClient/app/build/outputs/apk/release/app-release.apk"
+          # 用 runner 上的 apksigner 复核，确保产出的确实是正式签名包
+          APKSIGNER="$(find /usr/local/lib/android/sdk/build-tools -name apksigner -type f | sort | tail -n1)"
+          echo "apksigner: $APKSIGNER"
+          "$APKSIGNER" verify --print-certs --verbose "$APK"
+          # 证书主题里应当出现你的署名，否则说明用错了密钥库
+          "$APKSIGNER" verify --print-certs "$APK" | grep -q "CN=Huan Nian" \
+            || { echo "签名证书主题不符，可能用错了密钥库" >&2; exit 1; }
+          echo "签名校验通过"
 
       - name: 改名并收集
         run: |
@@ -154,7 +191,7 @@ jobs:
           if [ -z "$version" ]; then version="${GITHUB_REF_NAME#v}"; fi
           echo "VERSION=$version" >> "$GITHUB_ENV"
           mkdir -p dist
-          cp PenClient/app/build/outputs/apk/debug/app-debug.apk "dist/PenClient-$version-debug.apk"
+          cp PenClient/app/build/outputs/apk/release/app-release.apk "dist/PenClient-$version.apk"
           ls -lh dist/
 
       - uses: actions/upload-artifact@v4

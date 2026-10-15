@@ -1,4 +1,4 @@
-package com.example.penclient
+package com.HuanNian.penclient
 
 import android.util.Log
 import java.net.DatagramPacket
@@ -230,6 +230,7 @@ class PenSender {
         val from = fromAddress ?: return null
         return DiscoveredHost(from, port)
     }
+
     /** 计算本机所有活动网段的广播地址。 */
     private fun broadcastTargets(): List<InetAddress> {
         val result = LinkedHashSet<InetAddress>()

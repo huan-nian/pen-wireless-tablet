@@ -1,11 +1,10 @@
-package com.example.penclient
+package com.HuanNian.penclient
 
 import android.content.res.ColorStateList
 import android.graphics.Color
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
-import android.view.View
 import android.view.WindowManager
 import android.widget.Toast
 import androidx.annotation.ColorRes
@@ -16,7 +15,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.updatePadding
-import com.example.penclient.databinding.ActivityFullscreenBinding
+import com.HuanNian.penclient.databinding.ActivityFullscreenBinding
 
 /**
  * 书写页：左侧快捷按钮 + 整块书写区。
