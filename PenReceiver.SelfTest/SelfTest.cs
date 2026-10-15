@@ -33,6 +33,7 @@ internal static class SelfTest
         TestPressureScaling();
         TestLongPressGate();
         TestProtocolRoundTripRightClick();
+        TestFingerFlag();
         TestCommandProtocol();
         TestCommandKeyMapping();
         TestUdpPipeline(port);
@@ -49,10 +50,10 @@ internal static class SelfTest
     {
         var bytes = PenProtocol.BuildPen(
             seq: 42, action: PenAction.Move, x: 0.25f, y: 0.75f,
-            pressure: 0.5f, tiltX: -12f, tiltY: 34f, eraser: true);
+            pressure: 0.5f, tiltX: -12f, tiltY: 34f, flags: PenFlags.Eraser);
 
         Check("报文长度固定 36 字节", bytes.Length == PenProtocol.PenPacketSize, $"实际 {bytes.Length}");
-        Check("magic 为 PNB2", PenProtocol.TryParsePen(bytes, out var packet));
+        Check("magic 为 PNB4（引入手指输入后升级）", PenProtocol.TryParsePen(bytes, out var packet));
         Check("序号解析正确", packet.Seq == 42, $"实际 {packet.Seq}");
         Check("动作解析正确", packet.Action == PenAction.Move, $"实际 {packet.Action}");
         Check("X 坐标解析正确", Math.Abs(packet.X - 0.25f) < 1e-6, $"实际 {packet.X}");
@@ -211,24 +212,56 @@ internal static class SelfTest
         Check("Reset 后恢复正常", gate.Decide(down) == StrokeDecision.Inject);
     }
 
-    private static void TestProtocolRoundTripRightClick()    {
+    private static void TestProtocolRoundTripRightClick()
+    {
         var bytes = PenProtocol.BuildPen(
             seq: 7, action: PenAction.Up, x: 0.5f, y: 0.5f,
-            pressure: 0f, tiltX: 0f, tiltY: 0f, eraser: false, rightClick: true);
+            pressure: 0f, tiltX: 0f, tiltY: 0f, flags: PenFlags.RightClick);
 
         Check("右键标记能往返", PenProtocol.TryParsePen(bytes, out var packet) && packet.IsRightClick);
 
         var plain = PenProtocol.BuildPen(
             seq: 8, action: PenAction.Up, x: 0.5f, y: 0.5f,
-            pressure: 0f, tiltX: 0f, tiltY: 0f, eraser: false);
+            pressure: 0f, tiltX: 0f, tiltY: 0f);
         Check("普通报文不会被误判为右键",
             PenProtocol.TryParsePen(plain, out var p2) && !p2.IsRightClick);
 
         var eraser = PenProtocol.BuildPen(
             seq: 9, action: PenAction.Move, x: 0.5f, y: 0.5f,
-            pressure: 0f, tiltX: 0f, tiltY: 0f, eraser: true, rightClick: true);
+            pressure: 0f, tiltX: 0f, tiltY: 0f,
+            flags: PenFlags.Eraser | PenFlags.RightClick);
         Check("橡皮与右键标记可以共存",
             PenProtocol.TryParsePen(eraser, out var p3) && p3.IsEraser && p3.IsRightClick);
+    }
+
+    /// <summary>
+    /// 手指输入标记（触摸模式）。
+    ///
+    /// 这个标记存在的意义是让接收端知道「这不是笔」：手指没有倾斜量、
+    /// 压力也只有 0/1，混在一起会让界面上的状态显示与压力解释都不对。
+    /// </summary>
+    private static void TestFingerFlag()
+    {
+        var finger = PenProtocol.BuildPen(
+            seq: 11, action: PenAction.Move, x: 0.3f, y: 0.4f,
+            pressure: 1f, tiltX: 0f, tiltY: 0f, flags: PenFlags.Finger);
+        Check("手指标记能往返",
+            PenProtocol.TryParsePen(finger, out var p) && p.IsFinger);
+        Check("手指报文不会被误判为橡皮或右键",
+            PenProtocol.TryParsePen(finger, out var p2) && !p2.IsEraser && !p2.IsRightClick);
+
+        var pen = PenProtocol.BuildPen(
+            seq: 12, action: PenAction.Move, x: 0.3f, y: 0.4f,
+            pressure: 0.5f, tiltX: 0f, tiltY: 0f);
+        Check("触控笔报文不带手指标记",
+            PenProtocol.TryParsePen(pen, out var p3) && !p3.IsFinger);
+
+        var both = PenProtocol.BuildPen(
+            seq: 13, action: PenAction.Up, x: 0.3f, y: 0.4f,
+            pressure: 0f, tiltX: 0f, tiltY: 0f,
+            flags: PenFlags.Finger | PenFlags.RightClick);
+        Check("手指长按（右键）标记可共存",
+            PenProtocol.TryParsePen(both, out var p4) && p4.IsFinger && p4.IsRightClick);
     }
 
     /// <summary>系统命令报文的编解码。</summary>
@@ -399,7 +432,8 @@ internal static class SelfTest
     private static void Send(UdpClient sender, IPEndPoint target, ref int count,
         PenAction action, float x, float y, float pressure, float tiltX, float tiltY, bool eraser)
     {
-        var bytes = PenProtocol.BuildPen((uint)count, action, x, y, pressure, tiltX, tiltY, eraser);
+        var flags = eraser ? PenFlags.Eraser : PenFlags.None;
+        var bytes = PenProtocol.BuildPen((uint)count, action, x, y, pressure, tiltX, tiltY, flags);
         sender.Send(bytes, bytes.Length, target);
         count++;
     }

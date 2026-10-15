@@ -54,6 +54,14 @@ class PenCanvasView @JvmOverloads constructor(
          * 这里取 600ms，并配合「位移不超过系统触摸阈值」来判定。
          */
         private const val LONG_PRESS_MS = 600L
+
+        /**
+         * 手指输入事件使用的压力值。
+         *
+         * 电容屏的手指基本没有压力信息（MotionEvent 报的多是 0），若直接透传会得到
+         * 一条固定最细的线。这里固定给满压力，让它和「用力写」的笔迹线宽一致。
+         */
+        private const val FINGER_PRESSURE = 1.0f
     }
 
     var listener: Listener? = null
@@ -66,6 +74,25 @@ class PenCanvasView @JvmOverloads constructor(
         set(value) {
             field = value
             if (!value) clearInk()
+            invalidate()
+        }
+
+    /**
+     * 触摸模式：允许手指输入。
+     *
+     * 默认关闭——书写时手掌常常会先碰到屏幕，若手指也算输入就会画出一堆杂线。
+     * 打开后手指与触控笔都能写；此时**必须把手掌抬离屏幕**，否则掌根会被当成
+     * 一笔粗线（触摸屏上手指与手掌无法区分，这是硬件层面的限制）。
+     */
+    var fingerMode: Boolean = false
+        set(value) {
+            if (field == value) return
+            field = value
+            // 切换模式时把正在进行的这一笔收尾，避免改了模式之后笔尖卡在按下状态
+            if (inContact) {
+                endStroke()
+                activePointerId = MotionEvent.INVALID_POINTER_ID
+            }
             invalidate()
         }
 
@@ -114,6 +141,9 @@ class PenCanvasView @JvmOverloads constructor(
     private var activePointerId = MotionEvent.INVALID_POINTER_ID
     private var inContact = false
     private var eraserActive = false
+
+    /** 当前这一笔是否来自手指（触摸模式）。决定报文里要不要带手指标记。 */
+    private var currentToolIsFinger = false
 
     private var cursorX = -1f
     private var cursorY = -1f
@@ -183,14 +213,23 @@ class PenCanvasView @JvmOverloads constructor(
         val index = event.actionIndex.coerceIn(0, event.pointerCount - 1)
         val toolType = event.getToolType(index)
 
-        val isPen = toolType == MotionEvent.TOOL_TYPE_STYLUS ||
+        val isStylus = toolType == MotionEvent.TOOL_TYPE_STYLUS ||
                 toolType == MotionEvent.TOOL_TYPE_ERASER
-        if (!isPen) {
+        val isFinger = toolType == MotionEvent.TOOL_TYPE_FINGER
+
+        if (!isStylus && !(isFinger && fingerMode)) {
             // 手指：完全不管，交还给父容器/系统处理
             return false
         }
 
         val pointerId = event.getPointerId(index)
+
+        // 触摸模式下只认「第一根落下的手指」。
+        // 多指同时按会让笔迹在两个点之间来回连线；更实际的意义是：这样至少
+        // 能挡住第二、第三处掌面接触，不至于画出一大片。
+        if (isFinger && event.actionMasked == MotionEvent.ACTION_POINTER_DOWN) {
+            return true
+        }
 
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN, MotionEvent.ACTION_POINTER_DOWN -> {
@@ -270,14 +309,21 @@ class PenCanvasView @JvmOverloads constructor(
     // ---------------------------------------------------------------- 内部实现
 
     private fun beginStroke(pointerId: Int, index: Int, event: MotionEvent) {
-        eraserActive = event.getToolType(index) == MotionEvent.TOOL_TYPE_ERASER
+        val toolType = event.getToolType(index)
+        eraserActive = toolType == MotionEvent.TOOL_TYPE_ERASER
+        currentToolIsFinger = toolType == MotionEvent.TOOL_TYPE_FINGER
         inContact = true
         updateTilt(event)
         path.reset()
 
         val sx = event.getX(index)
         val sy = event.getY(index)
-        lastPressure = event.getPressure(index).coerceIn(0f, 1f)
+        // 手指没有真实压力，固定给满压力，线宽才不会被画成固定最细
+        lastPressure = if (currentToolIsFinger) {
+            FINGER_PRESSURE
+        } else {
+            event.getPressure(index).coerceIn(0f, 1f)
+        }
         path.moveTo(sx, sy)
         updateCursor(sx, sy)
 
@@ -310,7 +356,12 @@ class PenCanvasView @JvmOverloads constructor(
 
         val x = event.getX(pointerIndex)
         val y = event.getY(pointerIndex)
-        lastPressure = event.getPressure(pointerIndex).coerceIn(0f, 1f)
+        // 手指恒定满压力；触控笔用真实压力
+        lastPressure = if (currentToolIsFinger) {
+            FINGER_PRESSURE
+        } else {
+            event.getPressure(pointerIndex).coerceIn(0f, 1f)
+        }
         updateTilt(event)
         cancelLongPressIfMoved(x, y)
         drawSegment(x, y, lastPressure)
@@ -394,6 +445,11 @@ class PenCanvasView @JvmOverloads constructor(
         val h = height.toFloat()
         if (w <= 0f || h <= 0f) return
 
+        var flags = 0
+        if (eraserActive) flags = flags or PenProtocol.FLAG_ERASER
+        if (rightClick) flags = flags or PenProtocol.FLAG_RIGHT_CLICK
+        if (currentToolIsFinger) flags = flags or PenProtocol.FLAG_FINGER
+
         val packet = PenProtocol.encodePen(
             seq = s.nextSeq(),
             action = action,
@@ -402,8 +458,7 @@ class PenCanvasView @JvmOverloads constructor(
             pressure = pressure.coerceIn(0f, 1f),
             tiltX = lastTiltX,
             tiltY = lastTiltY,
-            eraser = eraserActive,
-            rightClick = rightClick
+            flags = flags
         )
         s.send(packet)
     }

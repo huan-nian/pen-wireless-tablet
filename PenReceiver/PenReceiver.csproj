@@ -18,7 +18,7 @@
     <ApplicationDefaultFont>Microsoft YaHei UI, 9pt</ApplicationDefaultFont>
     <AssemblyTitle>无线手写板 接收端</AssemblyTitle>
     <Product>PenReceiver</Product>
-    <Version>2.0.0</Version>
+    <Version>1.0.1</Version>
 
     <!--
       应用图标：多尺寸 .ico 由 tools/generate-app-icons.py 从

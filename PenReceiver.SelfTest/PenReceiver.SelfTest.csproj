@@ -14,7 +14,7 @@
       不注入任何输入，因此在普通权限、远程会话、CI 里都能直接跑。
     -->
     <AssemblyTitle>无线手写板 自检</AssemblyTitle>
-    <Version>2.0.0</Version>
+    <Version>1.0.1</Version>
   </PropertyGroup>
 
   <ItemGroup>

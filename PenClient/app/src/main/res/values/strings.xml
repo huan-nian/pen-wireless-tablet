@@ -55,6 +55,15 @@
     <string name="color_ink">浓墨</string>
     <string name="toast_background_changed">底色已切换为「%1$s」</string>
 
+    <!-- ==================== 输入模式 ==================== -->
+    <string name="mode_pen">手写笔</string>
+    <string name="mode_touch">触摸</string>
+    <string name="dialog_mode_title">输入模式</string>
+    <string name="mode_pen_desc">手写笔模式：只采集触控笔。手掌可以自然搁在屏幕上，不会被当成输入。</string>
+    <string name="mode_touch_desc">触摸模式：手指也能书写，没有笔也能用。此时手掌碰到屏幕会被当成笔画，请把手抬离屏幕。</string>
+    <string name="toast_mode_pen">已切换为手写笔模式（只识别触控笔）</string>
+    <string name="toast_mode_touch">已切换为触摸模式（手指也能写，请勿把手掌搁在屏幕上）</string>
+
     <!-- ==================== 笔迹消退 ==================== -->
     <string name="ink_mode_never">笔迹永存</string>
     <string name="ink_mode_5s">笔迹 5 秒</string>

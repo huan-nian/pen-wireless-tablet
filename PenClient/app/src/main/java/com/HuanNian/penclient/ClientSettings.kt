@@ -39,6 +39,16 @@ class ClientSettings(context: Context) {
         }
         set(value) = prefs.edit().putString(KEY_INK_RETENTION, value.name).apply()
 
+    /**
+     * 触摸模式：手指也能书写。
+     *
+     * 默认关闭。书写时手掌常常先碰到屏幕，手指若也算输入就会画出一堆杂线，
+     * 所以「只手写笔」必须是默认行为；需要无笔使用时再手动打开。
+     */
+    var fingerMode: Boolean
+        get() = prefs.getBoolean(KEY_FINGER_MODE, false)
+        set(value) = prefs.edit().putBoolean(KEY_FINGER_MODE, value).apply()
+
     private companion object {
         const val PREFS = "pen_client"
         const val KEY_HOST = "host"
@@ -46,6 +56,7 @@ class ClientSettings(context: Context) {
         const val KEY_KEEP_SCREEN_ON = "keep_screen_on"
         const val KEY_CANVAS_COLOR = "canvas_color"
         const val KEY_INK_RETENTION = "ink_retention"
+        const val KEY_FINGER_MODE = "finger_mode"
 
         /** 与 colors.xml 里的 canvas_default 保持一致（暖白）。 */
         val DEFAULT_CANVAS_COLOR = Color.parseColor("#F7F5F0")

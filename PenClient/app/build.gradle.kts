@@ -40,8 +40,9 @@ android {
 
         // versionCode 是给系统比较新旧用的整数，每次发版必须递增；
         // versionName 是给人看的，两者要一起改。
-        versionCode = 1
-        versionName = "1.0.0"
+        // 1.0.1：新增触摸模式（手指也能书写）
+        versionCode = 2
+        versionName = "1.0.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

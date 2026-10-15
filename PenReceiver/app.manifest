@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <assembly manifestVersion="1.0" xmlns="urn:schemas-microsoft-com:asm.v1">
-  <assemblyIdentity version="2.0.0.0" name="PenReceiver.app" />
+  <assemblyIdentity version="1.0.1.0" name="PenReceiver.app" />
 
   <!--
     申请管理员权限：Windows 的笔输入注入接口（InputInjector）只在提升后的进程里可用。

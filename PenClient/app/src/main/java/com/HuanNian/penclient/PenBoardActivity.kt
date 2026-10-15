@@ -60,10 +60,12 @@ class PenBoardActivity : AppCompatActivity(), PenCanvasView.Listener {
         binding.canvas.sender = sender
         binding.canvas.listener = this
         binding.canvas.inkBackgroundColor = settings.canvasColor
+        binding.canvas.fingerMode = settings.fingerMode
 
         applyKeepScreenOn()
         wireToolbar()
         wireBottomBar()
+        refreshModeLabel()
         refreshInkModeLabel()
         startStatusUpdater()
 
@@ -158,8 +160,47 @@ class PenBoardActivity : AppCompatActivity(), PenCanvasView.Listener {
     // ------------------------------------------------------------ 底部控件
 
     private fun wireBottomBar() {
+        binding.btnMode.setOnClickListener { showModePicker() }
         binding.btnBackground.setOnClickListener { showBackgroundPicker() }
         binding.btnInkMode.setOnClickListener { showInkModePicker() }
+    }
+
+    /**
+     * 输入模式：手写笔 / 触摸。
+     *
+     * 用对话框而不是直接切换，是因为这里有个反直觉的取舍需要当面说清：
+     * 打开触摸模式后，手掌碰到屏幕也会被当成笔画（触摸屏无法区分手指与手掌），
+     * 必须把手抬离屏幕。一次点击就悄悄切过去，用户会以为是画错了。
+     */
+    private fun showModePicker() {
+        val entries = arrayOf(
+            getString(R.string.mode_pen),
+            getString(R.string.mode_touch),
+        )
+        val current = if (binding.canvas.fingerMode) 1 else 0
+
+        AlertDialog.Builder(this)
+            .setTitle(R.string.dialog_mode_title)
+            .setSingleChoiceItems(entries, current) { dialog, which ->
+                applyFingerMode(which == 1)
+                dialog.dismiss()
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
+    }
+
+    private fun applyFingerMode(enabled: Boolean) {
+        if (binding.canvas.fingerMode == enabled) return
+        binding.canvas.fingerMode = enabled
+        settings.fingerMode = enabled
+        refreshModeLabel()
+        toast(getString(if (enabled) R.string.toast_mode_touch else R.string.toast_mode_pen))
+    }
+
+    private fun refreshModeLabel() {
+        binding.btnMode.setText(
+            if (binding.canvas.fingerMode) R.string.mode_touch else R.string.mode_pen
+        )
     }
 
     /** 一个预设底色。 */

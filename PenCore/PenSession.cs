@@ -39,6 +39,9 @@ public sealed class PenSession : IDisposable
     /// <summary>长按（= 右键）的状态判定。</summary>
     private readonly LongPressGate _longPress = new();
 
+    /// <summary>最近一次收到的输入来自触控笔还是手指。</summary>
+    private PenDevice _lastDevice = PenDevice.None;
+
     public PenSession(PenInjector injector)
     {
         _injector = injector;
@@ -113,6 +116,10 @@ public sealed class PenSession : IDisposable
         }
 
         var packet = datagram.Packet;
+
+        // 记录输入类型，供界面显示。平板开了触摸模式时手指也会发笔事件，
+        // 界面上能看出区别，「手指为什么也能写」这类问题排查起来会快很多。
+        _lastDevice = packet.IsFinger ? PenDevice.Finger : PenDevice.Stylus;
 
         // 「长按 = 右键」的状态判定。长按那一笔的笔迹要整体丢弃，
         // 否则长按过程会先在屏幕上留下一个墨点。
@@ -235,6 +242,7 @@ public sealed class PenSession : IDisposable
             LastSender = _lastSource?.Address.ToString(),
             LastInjectionError = LastInjectionError,
             HasInjected = _injector.HasInjectedAnything,
+            LastDevice = _lastDevice,
         });
     }
 
@@ -267,4 +275,20 @@ public sealed class PenSessionStatus
     public string? LastSender;
     public string? LastInjectionError;
     public bool HasInjected;
+
+    /// <summary>最近一次输入的来源设备。</summary>
+    public PenDevice LastDevice = PenDevice.None;
+}
+
+/// <summary>笔事件的来源设备。</summary>
+public enum PenDevice
+{
+    /// <summary>还没收到任何输入。</summary>
+    None = 0,
+
+    /// <summary>触控笔（平板处于手写笔模式）。</summary>
+    Stylus = 1,
+
+    /// <summary>手指（平板处于触摸模式）。</summary>
+    Finger = 2,
 }

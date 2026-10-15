@@ -17,7 +17,7 @@ public enum PenAction
 /// 线协议：定长报文、小端序。与 Android 端 PenProtocol.kt 一一对应，改一处必须改两处。
 ///
 /// PEN 报文（36 字节）
-///   0  uint32 magic = 0x504E4232 "PNB2"
+///   0  uint32 magic = 0x504E4234 "PNB4"
 ///   4  uint32 seq
 ///   8  int32  action
 ///  12  float  x        归一化 [0,1]
@@ -25,15 +25,19 @@ public enum PenAction
 ///  20  float  pressure [0,1]
 ///  24  float  tiltX    度
 ///  28  float  tiltY    度
-///  32  int32  flags    位 0 = 橡皮端
+///  32  int32  flags    位 0 = 橡皮端、位 1 = 长按（=右键）、位 2 = 手指输入
 ///
 /// HELLO 报文（8 字节）magic = 0x504E4230 "PNB0"，用于 Android 端扫描发现本机。
 /// REPLY 报文（12 字节）magic = 0x504E4231 "PNB1"，本机对探测的回复，携带端口。
 /// CMD 报文（8 字节）magic = 0x504E4233 "PNB3"，平板上的快捷按钮要求电脑执行一个操作。
+///
+/// 兼容性说明（重要）：PEN 的 magic 从 PNB2 升到 PNB4，因为引入了「手指输入」这一新语义。
+/// 旧接收端只认 PNB2，遇到 PNB4 会直接丢弃；新接收端也只认 PNB4。
+/// 因此新旧两端混搭时表现为「连得上但画不出」——这是刻意的，宁可不动也不要画错。
 /// </summary>
 public static class PenProtocol
 {
-    public const uint MagicPen = 0x504E4232;
+    public const uint MagicPen = 0x504E4234;
     public const uint MagicHello = 0x504E4230;
     public const uint MagicReply = 0x504E4231;
     public const uint MagicCommand = 0x504E4233;
@@ -112,10 +116,15 @@ public static class PenProtocol
         return buffer;
     }
 
-    /// <summary>构造一个 PEN 报文。主要供自检使用，保证与 Android 端字节级一致。</summary>
+    /// <summary>
+    /// 构造一个 PEN 报文。主要供自检使用，保证与 Android 端字节级一致。
+    ///
+    /// flags 直接传标记位组合（<see cref="PenFlags"/>），而不是一堆 bool 参数：
+    /// 标记位以后还会增加，逐个加 bool 参数会让调用点越来越难读、也容易漏改。
+    /// </summary>
     public static byte[] BuildPen(
         uint seq, PenAction action, float x, float y,
-        float pressure, float tiltX, float tiltY, bool eraser, bool rightClick = false)
+        float pressure, float tiltX, float tiltY, PenFlags flags = PenFlags.None)
     {
         var buffer = new byte[PenPacketSize];
         BinaryPrimitives.WriteUInt32LittleEndian(buffer.AsSpan(0), MagicPen);
@@ -126,10 +135,6 @@ public static class PenProtocol
         BinaryPrimitives.WriteSingleLittleEndian(buffer.AsSpan(20), pressure);
         BinaryPrimitives.WriteSingleLittleEndian(buffer.AsSpan(24), tiltX);
         BinaryPrimitives.WriteSingleLittleEndian(buffer.AsSpan(28), tiltY);
-
-        var flags = PenFlags.None;
-        if (eraser) flags |= PenFlags.Eraser;
-        if (rightClick) flags |= PenFlags.RightClick;
         BinaryPrimitives.WriteInt32LittleEndian(buffer.AsSpan(32), (int)flags);
         return buffer;
     }
@@ -216,6 +221,14 @@ public enum PenFlags
     /// 右键手势（笔按下静止 1.1 秒也不产生右键），所以必须由平板端识别、显式注入。
     /// </summary>
     RightClick = 2,
+
+    /// <summary>
+    /// 这一笔来自手指（平板处于触摸模式），不是触控笔。
+    ///
+    /// 手指没有倾斜量、压力通常只有 0/1，接收端据此正确解释压力，
+    /// 并在界面上显示当前输入类型。
+    /// </summary>
+    Finger = 4,
 }
 
 /// <summary>一个解析后的笔事件。</summary>
@@ -233,6 +246,9 @@ public struct PenPacket
     public bool IsEraser => (Flags & PenFlags.Eraser) != 0;
 
     public bool IsRightClick => (Flags & PenFlags.RightClick) != 0;
+
+    /// <summary>这一笔是否来自手指（平板处于触摸模式）。</summary>
+    public bool IsFinger => (Flags & PenFlags.Finger) != 0;
 }
 
 /// <summary>UDP 收到的一个数据报。</summary>

@@ -10,9 +10,9 @@ import kotlin.math.sin
 /**
  * 与 Windows 接收端共用的线协议定义。
  *
- * 定长报文，全部小端序（Little Endian）。两种报文用 magic 区分：
+ * 定长报文，全部小端序（Little Endian）。四种报文用 magic 区分：
  *
- *   PEN 报文  magic = 0x504E4232 ("PNB2")，36 字节
+ *   PEN 报文  magic = 0x504E4234 ("PNB4")，36 字节
  *     0  uint32  magic
  *     4  uint32  seq        单调递增序号，接收端据此统计丢包
  *     8  int32   action     见 Action
@@ -21,19 +21,22 @@ import kotlin.math.sin
  *    20  float   pressure   [0,1]
  *    24  float   tiltX      相对屏幕 X 轴倾角，度，[-90,90]（右倾为正）
  *    28  float   tiltY      相对屏幕 Y 轴倾角，度，[-90,90]（向自己倾为负）
- *    32  int32   flags      位 0 = 橡皮端（笔尾）
+ *    32  int32   flags      位 0 = 橡皮端、位 1 = 长按（=右键）、位 2 = 手指输入
  *
  *   HELLO 报文 magic = 0x504E4230 ("PNB0")，8 字节，用于自动发现接收端
- *     0  uint32  magic
- *     4  uint32  reserved
+ *   REPLY 报文 magic = 0x504E4231 ("PNB1")，12 字节，接收端回复监听端口
+ *   CMD   报文 magic = 0x504E4233 ("PNB3")，8 字节，平板快捷按钮下发系统命令
  *
- * 兼容性：旧版 32 字节报文（magic "PEN1"）与新版语义不同，接收端只认新 magic，
- * 不会误把旧包当新包解析。
+ * 兼容性说明（重要）：
+ *   PEN 报文的 magic 从 PNB2 升到 PNB4，因为引入了「手指输入」这一新语义。
+ *   旧版接收端只认 PNB2，遇到 PNB4 会直接丢弃，不会把手指事件误当成笔事件、
+ *   也不会因为未知标记位而画错。反过来，新接收端也只认 PNB4，因此新旧两端
+ *   混搭时会「连得上但画不出」——这是刻意的：宁可不动，也不要画错。
  */
 object PenProtocol {
 
-    /** PNB2：笔事件报文 */
-    const val MAGIC_PEN: Int = 0x504E4232
+    /** PNB4：笔/手指事件报文 */
+    const val MAGIC_PEN: Int = 0x504E4234
 
     /** PNB0：发现用探测报文 */
     const val MAGIC_HELLO: Int = 0x504E4230
@@ -102,6 +105,15 @@ object PenProtocol {
     const val FLAG_RIGHT_CLICK: Int = 2
 
     /**
+     * 这一笔来自手指（触摸模式），而不是触控笔。
+     *
+     * 为什么需要这个标记：接收端注入的是笔事件，而手指与触控笔在信号质量上
+     * 差别很大（手指没有倾斜量、压力通常只有 0/1）。带上标记，接收端才能
+     * 正确解释压力、并在界面上显示当前输入类型。
+     */
+    const val FLAG_FINGER: Int = 4
+
+    /**
      * 把 Android 的「倾斜角 + 方位角」换算成 Windows 的 TiltX / TiltY（单位为度）。
      *
      * Android 的 AXIS_TILT 是笔身相对屏幕法线的夹角（弧度，0 表示笔垂直于屏幕），
@@ -118,7 +130,11 @@ object PenProtocol {
         return x.toFloat().coerceIn(-90f, 90f) to y.toFloat().coerceIn(-90f, 90f)
     }
 
-    /** 打包一个笔事件报文。 */
+    /**
+     * 打包一个笔/手指事件报文。
+     *
+     * @param flags 用 [FLAG_ERASER] / [FLAG_RIGHT_CLICK] / [FLAG_FINGER] 组合而成
+     */
     fun encodePen(
         seq: Int,
         action: Int,
@@ -127,8 +143,7 @@ object PenProtocol {
         pressure: Float,
         tiltX: Float,
         tiltY: Float,
-        eraser: Boolean,
-        rightClick: Boolean = false
+        flags: Int
     ): ByteArray {
         val buf = ByteBuffer.allocate(PEN_PACKET_SIZE).order(ByteOrder.LITTLE_ENDIAN)
         buf.putInt(MAGIC_PEN)
@@ -139,9 +154,6 @@ object PenProtocol {
         buf.putFloat(pressure)
         buf.putFloat(tiltX)
         buf.putFloat(tiltY)
-        var flags = 0
-        if (eraser) flags = flags or FLAG_ERASER
-        if (rightClick) flags = flags or FLAG_RIGHT_CLICK
         buf.putInt(flags)
         return buf.array()
     }

@@ -47,6 +47,9 @@ public sealed class PenReceiverForm : Form
     private readonly Label _penValue = new();
     private readonly Label _adminValue = new();
 
+    /// <summary>最近一次输入来自触控笔还是手指。</summary>
+    private readonly Label _deviceValue = new();
+
     private readonly ListBox _log = new();
     private readonly NotifyIcon _tray = new();
     private readonly System.Windows.Forms.Timer _uiTimer = new();
@@ -356,14 +359,15 @@ public sealed class PenReceiverForm : Form
 
     private Control BuildStatusGroup()
     {
-        var layout = Grid(rows: 6, rowHeight: 25);
+        var layout = Grid(rows: 7, rowHeight: 25);
 
         AddStatusRow(layout, 0, "运行状态", _stateValue);
         AddStatusRow(layout, 1, "本机地址", _addressValue);
         AddStatusRow(layout, 2, "数据速率", _rateValue);
         AddStatusRow(layout, 3, "链路质量", _qualityValue);
         AddStatusRow(layout, 4, "笔状态", _penValue);
-        AddStatusRow(layout, 5, "注入权限", _adminValue);
+        AddStatusRow(layout, 5, "输入类型", _deviceValue);
+        AddStatusRow(layout, 6, "注入权限", _adminValue);
 
         return layout;
     }
@@ -672,6 +676,20 @@ public sealed class PenReceiverForm : Form
 
             _penValue.Text = status.PenDown ? "按下" : "抬起";
             _penValue.ForeColor = status.PenDown ? WarnOrange : TextPrimary;
+
+            // 输入类型能直接反映平板当前的模式：显示「手指」说明平板开着触摸模式
+            _deviceValue.Text = status.LastDevice switch
+            {
+                PenDevice.Stylus => "触控笔",
+                PenDevice.Finger => "手指（平板处于触摸模式）",
+                _ => "尚未收到输入",
+            };
+            _deviceValue.ForeColor = status.LastDevice switch
+            {
+                PenDevice.Finger => WarnOrange,
+                PenDevice.Stylus => TextPrimary,
+                _ => TextMuted,
+            };
 
             _adminValue.Text = status.HasInjected ? "正常（已成功注入）" : "等待首次注入…";
             _adminValue.ForeColor = status.HasInjected ? OkGreen : TextMuted;
