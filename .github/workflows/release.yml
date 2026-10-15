@@ -108,14 +108,25 @@ jobs:
 
       # 签名是可选的：仓库里没有证书（证书是发布者身份，不进仓库），
       # 所以 CI 上默认跳过，只在配置了证书 Secret 时才签。
-      # 这样至少不会出现「CI 产出的包和本地签名包不一致」而不自知。
-      - name: Authenticode 签名（配置了证书才执行）
-        if: ${{ secrets.CODESIGN_PFX_BASE64 != '' }}
+      #
+      # ⚠️ 判断「有没有配置证书」不能写成 `if: ${{ secrets.X != '' }}`：
+      # GitHub 允许在 if 里用的上下文只有 github / env / vars / inputs / needs /
+      # steps / job / runner，**secrets 不在其列**。那样写会让整个工作流文件
+      # 校验失败——表现为工作流名显示成文件路径、每次 push 都产生一个 0 job 的
+      # 失败运行，却完全看不出错在哪（这条踩坑记录保留在此，避免以后再写回去）。
+      # 正确做法：把 Secret 经 env 传进来，在脚本里判断是否为空。
+      - name: Authenticode 签名（未配置证书则自动跳过）
         shell: pwsh
         env:
           CODESIGN_PFX_BASE64: ${{ secrets.CODESIGN_PFX_BASE64 }}
           CODESIGN_PFX_PASSWORD: ${{ secrets.CODESIGN_PFX_PASSWORD }}
         run: |
+          if ([string]::IsNullOrWhiteSpace($env:CODESIGN_PFX_BASE64)) {
+            Write-Host "未配置 CODESIGN_PFX_BASE64，跳过 Windows 代码签名。" -ForegroundColor Yellow
+            Write-Host "如需 CI 产出已签名的程序，请把 signing\codesign.pfx 的 base64 与口令加入仓库 Secrets。"
+            exit 0
+          }
+
           New-Item -ItemType Directory -Force -Path signing | Out-Null
           [IO.File]::WriteAllBytes('signing/codesign.pfx', [Convert]::FromBase64String($env:CODESIGN_PFX_BASE64))
           Set-Content 'signing/codesign.pass' -Value $env:CODESIGN_PFX_PASSWORD -Encoding ASCII -NoNewline
