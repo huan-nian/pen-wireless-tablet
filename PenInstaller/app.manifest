@@ -3,18 +3,11 @@
   <assemblyIdentity version="1.0.1.0" name="PenWirelessTablet.Setup" />
 
   <!--
-    用 requireAdministrator。
-
-    安装本身必须提权，两个原因缺一不可：
+    申请管理员权限。安装本身必须提权，两个原因缺一不可：
       1) 写入 Program Files 与 HKLM 卸载注册表项需要管理员权限；
       2) 接收端必须在提升的进程里运行——Windows 笔注入接口（InputInjector）
          只在提升的进程里可用，非提升会抛 COM 类工厂错误。
     既然用户装完总要提权运行主程序，安装时一次提权到底更省事。
-
-    注：曾经试过改成 highestAvailable 以便让 `--test-extract` 自检能在不提权下运行，
-    结果导致启动报「side-by-side configuration is incorrect」——.NET 的 apphost
-    自己也带一份清单，两份清单的 requestedExecutionLevel 不一致时会冲突。
-    所以这里保持 requireAdministrator，自检改由 scripts\dev-tools 下的独立工具做。
   -->
   <trustInfo xmlns="urn:schemas-microsoft-com:asm.v2">
     <security>
@@ -31,10 +24,17 @@
     </application>
   </compatibility>
 
-  <application xmlns="urn:schemas-microsoft-com:asm.v3">
-    <windowsSettings>
-      <!-- 安装器是固定尺寸对话框，用 PerMonitorV2 避免高 DPI 下文字发虚 -->
-      <dpiAwareness xmlns="http://schemas.microsoft.com/SMI/2016/WindowsSettings">PerMonitorV2</dpiAwareness>
-    </windowsSettings>
-  </application>
+  <!--
+    ⚠️ 不要在这里手写 DPI 设置（<application><windowsSettings><dpiAwareness>）。
+    踩过的坑：手写 <application xmlns="urn:schemas-microsoft-com:asm.v3"> +
+    PerMonitorV2 之后，程序启动直接报
+        「应用程序无法启动，因为应用程序的并行配置不正确」
+    （side-by-side configuration is incorrect）。
+    因为 .NET SDK 会依据 csproj 里的 ApplicationHighDpiMode 自己生成这些节点，
+    两处都写就产生了互相冲突的激活上下文。
+
+    需要改 DPI 行为请改 csproj：
+        <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    PenReceiver 的 app.manifest 里也有同样的提醒，两处保持一致。
+  -->
 </assembly>

@@ -38,6 +38,18 @@
     <DebugType>none</DebugType>
     <ApplicationIcon>..\assets\app.ico</ApplicationIcon>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!--
+      DPI 行为必须在这里设，不能写进 app.manifest。
+
+      踩过的坑：在 app.manifest 里手写
+          <application xmlns="urn:schemas-microsoft-com:asm.v3">
+            <windowsSettings><dpiAwareness>PerMonitorV2</dpiAwareness></windowsSettings>
+          </application>
+      会让程序启动时报「应用程序无法启动，因为应用程序的并行配置不正确」，
+      因为 SDK 会依据这个属性另外生成一份 DPI 节点，两份激活上下文互相冲突。
+    -->
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <ApplicationDefaultFont>Microsoft YaHei UI, 9pt</ApplicationDefaultFont>
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
   </PropertyGroup>
 

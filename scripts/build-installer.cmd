@@ -68,6 +68,16 @@ if not exist "dist" mkdir "dist"
 copy /y "PenInstaller\publish\PenWirelessTablet-Setup.exe" "dist\PenWirelessTablet-Setup-%VERSION%.exe" >nul
 if errorlevel 1 goto failed
 
+rem ---------- 3.5 校验嵌入清单 ----------
+rem 防的是一次真实事故：清单里手写的 dpiAwareness 会让程序一启动就报
+rem 「并行配置不正确」，而构建/签名/打包全都成功，只有真去双击才暴露。
+if exist "scripts\verify-manifest.ps1" (
+  echo.
+  echo [3.5/5] 校验嵌入清单...
+  powershell -NoProfile -ExecutionPolicy Bypass -File "scripts\verify-manifest.ps1" -Path "dist\PenWirelessTablet-Setup-%VERSION%.exe"
+  if errorlevel 1 goto manifestbad
+)
+
 rem ---------- 4. Authenticode 签名 ----------
 echo.
 echo [4/5] 代码签名...
@@ -93,4 +103,16 @@ exit /b 0
 :failed
 echo.
 echo 构建失败，请检查上面的错误输出。
+exit /b 1
+
+:manifestbad
+echo.
+echo 嵌入清单校验未通过，已中止。
+echo.
+echo   清单有问题时程序一启动就报「应用程序的并行配置不正确」，
+echo   而这种包一旦发出去用户完全无法使用，所以这里直接拦住、不产出产物。
+echo.
+echo   最常见的成因是在 app.manifest 里手写了 DPI 节点：
+echo     ^<application^>^<windowsSettings^>^<dpiAwareness^>...
+echo   DPI 必须由 csproj 的 ^<ApplicationHighDpiMode^> 控制，两处都写会冲突。
 exit /b 1
