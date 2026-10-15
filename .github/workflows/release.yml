@@ -315,18 +315,37 @@ jobs:
           prerelease: true
           generate_release_notes: true
           body: |
-            预览版。把 Android 平板当无线手写板用，笔迹以 Windows Ink 注入电脑。
-
-            完整使用说明见仓库 README，下载与三分钟上手步骤见
-            [`docs/release-notes-v0.1.0.md`](https://github.com/huan-nian/pen-wireless-tablet/blob/main/docs/release-notes-v0.1.0.md)。
+            把 Android 平板当作电脑的**无线手写板**：平板用触控笔（或手指）书写，
+            笔迹以真正的 Windows Ink 注入电脑。不用装驱动、不用数据线，
+            只要两边在同一个局域网。
 
             **下载哪个**
-            - `PenReceiver-*-win-x64.zip` —— 接收端，**推荐**。自包含，电脑上不用装 .NET。
-            - `PenReceiver-*-win-x64-lite.zip` —— 同上但体积小得多，需要电脑已装 .NET 8 运行时。
-            - `PenClient-*-debug.apk` —— 平板端。debug 签名，安装时请允许「未知来源」。
+
+            | 文件 | 给谁用 |
+            | --- | --- |
+            | `PenWirelessTablet-Setup-*.exe` | **推荐**。Windows 单文件安装包，双击即装；内置运行环境，**安装时不需要联网、也不用预装 .NET** |
+            | `PenReceiver-*-win-x64.zip` | 免安装绿色版，解压双击 `launch-receiver.cmd` 即可（同样自带运行环境） |
+            | `PenReceiver-*-win-x64-lite.zip` | 体积小得多，但需要电脑已装 .NET 8 运行时 |
+            | `PenClient-*.apk` | 平板端。**正式签名版**，可直接覆盖安装后续版本 |
+            | `SHA256SUMS.txt` | 校验值，用于确认下载完整 |
 
             **三步用起来**
-            1. 电脑上解压接收端，双击 `launch-receiver.cmd`，UAC 窗口点「是」。首次运行请允许防火墙的**专用网络**。
-            2. 平板装 APK，打开后点「扫描电脑」→「连接」。
-            3. 点右下角「开始书写」，用触控笔在白色区域书写。
+
+            1. **电脑**：运行安装包（或解压绿色版后双击 `launch-receiver.cmd`），
+               UAC 窗口点「是」。首次运行请在防火墙提示里允许**专用网络**。
+            2. **平板**：安装 APK（首次需允许「安装未知应用」），
+               打开后点「扫描电脑」→「连接」。
+            3. **开始写**：点右下角「开始书写」，用触控笔在白色区域书写。
+               底部可切换**手写笔 / 触摸**模式 —— 触摸模式下没有笔也能用手指写。
+
+            **关于 SmartScreen 提示**
+
+            本项目的 Windows 程序使用**自签证书**签名。首次运行仍可能看到
+            「Windows 已保护你的电脑」，这是自签证书的固有限制（该拦截依据证书声誉，
+            只有 CA 签发的证书才能消除），**不是病毒**。点「更多信息」→「仍要运行」即可。
+
+            完整说明与快捷键表见仓库
+            [`README`](https://github.com/huan-nian/pen-wireless-tablet#readme)，
+            逐步上手与已知限制见
+            [`docs/release-notes-v1.0.1.md`](https://github.com/huan-nian/pen-wireless-tablet/blob/main/docs/release-notes-v1.0.1.md)。
           files: release/*
